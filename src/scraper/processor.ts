@@ -25,8 +25,11 @@ export async function processSitemap(url: string, depth = 0): Promise<number | n
       }
       await db.update(sitemaps).set({ lastHash: currentHash, status: 'processing', lastCheckedAt: new Date() }).where(eq(sitemaps.id, sitemap.id));
     } else {
-      [sitemap] = await db.insert(sitemaps).values({ sitemapUrl: url, lastHash: currentHash, status: 'processing', lastCheckedAt: new Date() }).returning();
+      const inserted = await db.insert(sitemaps).values({ sitemapUrl: url, lastHash: currentHash, status: 'processing', lastCheckedAt: new Date() }).returning();
+      sitemap = inserted[0];
     }
+
+    if (!sitemap) return null;
 
     const result = await parseStringPromise(res.data, { explicitArray: false });
 
@@ -41,18 +44,20 @@ export async function processSitemap(url: string, depth = 0): Promise<number | n
     // Handle urlset
     if (result.urlset?.url) {
       const urlList = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
+      const sitemapId = sitemap.id;
+      
       for (let i = 0; i < urlList.length; i += config.batchSize) {
         const batch = urlList.slice(i, i + config.batchSize);
         await Promise.all(batch.map(async (e: any) => {
           if (!e.loc) return;
-          const exists = await db.select().from(urls).where(and(eq(urls.url, e.loc), eq(urls.sitemapId, sitemap?.id))).limit(1);
+          const exists = await db.select().from(urls).where(and(eq(urls.url, e.loc), eq(urls.sitemapId, sitemapId))).limit(1);
           if (exists.length === 0) {
-            await db.insert(urls).values({ url: e.loc, sitemapId: sitemap?.id });
-            await boss.send('scrape_queue', { url: e.loc, sitemapId: sitemap?.id }, { retryLimit: config.retryLimit, retryDelay: config.retryDelay });
+            await db.insert(urls).values({ url: e.loc, sitemapId: sitemapId });
+            await boss.send('scrape_queue', { url: e.loc, sitemapId: sitemapId }, { retryLimit: config.retryLimit, retryDelay: config.retryDelay });
           }
         }));
       }
-      await db.update(sitemaps).set({ status: 'active', totalUrlsFound: urlList.length, lastCheckedAt: new Date() }).where(eq(sitemaps.id, sitemap.id));
+      await db.update(sitemaps).set({ status: 'active', totalUrlsFound: urlList.length, lastCheckedAt: new Date() }).where(eq(sitemaps.id, sitemapId));
     }
 
     console.log(`[INFO] Processed sitemap: ${url}`);
