@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { config } from '../config';
+import { config } from '../utils/config';
 import * as schema from './schema';
 import { logger } from '../utils/logger';
 

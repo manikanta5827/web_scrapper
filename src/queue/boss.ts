@@ -1,5 +1,5 @@
 import { PgBoss } from 'pg-boss';
-import { config } from '../config';
+import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 
 export const boss = new PgBoss(config.databaseUrl);

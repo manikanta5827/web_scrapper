@@ -1,6 +1,8 @@
 import { load } from 'cheerio';
-import { config } from '../config';
-
+import { config } from '../utils/config';
+/*
+  * Extracts and cleans text content from HTML.
+*/
 export function extract(html: string): string {
   const $ = load(html);
   $('script, style, nav, footer, header, aside').remove();

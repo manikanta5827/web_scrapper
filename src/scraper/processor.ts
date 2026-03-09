@@ -5,7 +5,7 @@ import { db } from '../db/client';
 import { sitemaps, urls } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { boss } from '../queue/boss';
-import { config } from '../config';
+import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 
 const hash = (c: string) => createHash('sha256').update(c).digest('hex');
