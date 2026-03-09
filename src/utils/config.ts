@@ -14,7 +14,7 @@ export const config = {
   timeout: 10000,
 
   // 4. How many URLs to scrape at the exact same time within ONE worker process
-  concurrency: 3,
+  concurrency: 10,
 
   // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
   retryLimit: 1,
