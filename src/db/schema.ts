@@ -3,8 +3,8 @@ import type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 
 export const sitemaps = pgTable('sitemaps', {
   id: serial('id').primaryKey(),
+  parentId: integer('parent_id'), // Reference to the parent sitemap if nested
   sitemapUrl: text('sitemap_url').notNull().unique(),
-  lastHash: text('last_hash'),
   lastCheckedAt: timestamp('last_checked_at'),
   totalUrlsFound: integer('total_urls_found').default(0),
   status: text('status', { enum: ['active', 'processing', 'failed'] }).default('active'),
