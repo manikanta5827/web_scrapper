@@ -18,9 +18,10 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "start:worker": "bun app.ts",
-    "start:server": "bun src/api/server.ts",
-    "dev:server": "bun --hot src/api/server.ts",
+    "dev:server": "bun --hot server-init.ts",
+    "dev:worker": "bun --hot worker-init.ts",
+    "start:server": "bun server-init.ts",
+    "start:worker": "bun worker-init.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
