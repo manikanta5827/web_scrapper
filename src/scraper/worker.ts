@@ -15,20 +15,26 @@ export async function startWorker(): Promise<void> {
     batchSize: 1
   }, async (jobs: any[]) => {
     const job = jobs[0];
-    const { siteMapUrl, siteMapId, depth } = job.data;
+    const { sitemapUrl, sitemapId, depth } = job.data;
+
+    // Depth limit to prevent infinite loops
+    if (depth > 5) {
+      logger.warn(`Max depth reached for: ${sitemapUrl}`);
+      return;
+    }
+
     try {
-      // get the content of the sitemap
-      const res = await axios.get(siteMapUrl, {
+      logger.info(`[Worker] Fetching sitemap: ${sitemapUrl}`);
+      const res = await axios.get(sitemapUrl, {
         timeout: config.timeout,
         headers: { 'User-Agent': config.userAgent },
       });
 
       if (!res.data || typeof res.data !== 'string') {
-        await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.sitemapUrl, siteMapUrl));
-        return null;
+        await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.id, sitemapId));
+        return;
       }
 
-      // check if content is sitemap then add it to sitemap queue ,else if urlset and contains xml add it to sitemap queue else add it to url queue
       const result = await parseStringPromise(res.data, {
         explicitArray: false,
         trim: true,
@@ -36,68 +42,84 @@ export async function startWorker(): Promise<void> {
       });
 
       if (!result) {
-        await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.sitemapUrl, siteMapUrl));
-        return null;
+        await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.id, sitemapId));
+        return;
       }
 
+      let totalItems = 0;
+
+      // CASE A: Sitemap Index
       if (result.sitemapindex?.sitemap) {
         const entries = Array.isArray(result.sitemapindex.sitemap) ? result.sitemapindex.sitemap : [result.sitemapindex.sitemap];
+        totalItems = entries.length;
+
         for (const entry of entries) {
-          if (entry.loc) {
-            // add this sub sitemap to the db and queue
-            const [newSitemap] = await db.insert(sitemaps).values({
-              parentId: siteMapId,
+          if (!entry.loc) continue;
+
+          // Insert or get existing sitemap record
+          const [newSitemap] = await db.insert(sitemaps)
+            .values({
+              parentId: sitemapId,
               sitemapUrl: entry.loc,
-              status: 'active',
-            }).onConflictDoNothing().returning();
+              status: 'processing',
+            })
+            .onConflictDoUpdate({
+              target: sitemaps.sitemapUrl,
+              set: { updatedAt: new Date() }
+            })
+            .returning();
 
-            if(!newSitemap) {
-              logger.info(`Sitemap already exists in DB, skipping enqueue: ${entry.loc}`);
-              continue; // Skip if sitemap already exists (due to unique constraint)
-            }
-
-            await boss.send('sitemap_queue', { siteMapUrl: entry.loc, siteMapId: newSitemap.id, depth: depth + 1 }, {
+          if (newSitemap) {
+            await boss.send('sitemap_queue', { sitemapUrl: entry.loc, sitemapId: newSitemap.id, depth: depth + 1 }, {
               retryLimit: config.retryLimit,
               retryDelay: config.retryDelay
             });
           }
         }
-      } else if (result.urlset?.url) {
+      } 
+      // CASE B: Urlset
+      else if (result.urlset?.url) {
         const entries = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
+        totalItems = entries.length;
+
         for (const entry of entries) {
-          if (entry.loc && typeof entry.loc === 'string') {
-            const baseUrl = entry.loc.split('?')[0] ?? '';
-            if (baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz')) {
-              // add this sub sitemap to the queue
-              const [newSitemap] = await db.insert(sitemaps).values({
-                parentId: siteMapId,
+          if (!entry.loc || typeof entry.loc !== 'string') continue;
+
+          const baseUrl = entry.loc.split('?')[0] ?? '';
+          const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
+
+          if (isSitemap) {
+            const [newSitemap] = await db.insert(sitemaps)
+              .values({
+                parentId: sitemapId,
                 sitemapUrl: entry.loc,
-                status: 'active',
-              }).onConflictDoNothing().returning();
+                status: 'processing',
+              })
+              .onConflictDoUpdate({
+                target: sitemaps.sitemapUrl,
+                set: { updatedAt: new Date() }
+              })
+              .returning();
 
-              if(!newSitemap) {
-                logger.info(`Sitemap already exists in DB, skipping enqueue: ${entry.loc}`);
-                continue; // Skip if sitemap already exists (due to unique constraint)
-              }
-
-              await boss.send('sitemap_queue', { siteMapUrl: entry.loc, siteMapId: newSitemap.id, depth: depth + 1 }, {
+            if (newSitemap) {
+              await boss.send('sitemap_queue', { sitemapUrl: entry.loc, sitemapId: newSitemap.id, depth: depth + 1 }, {
                 retryLimit: config.retryLimit,
                 retryDelay: config.retryDelay
               });
             }
-            else {
-              // add this url to the url queue
-              const [newUrl] = await db.insert(urls).values({
-                sitemapId: siteMapId,
+          } else {
+            // Add page URL
+            const [newUrl] = await db.insert(urls)
+              .values({
+                sitemapId: sitemapId,
                 url: entry.loc,
                 status: 'queued',
-              }).onConflictDoNothing().returning();
+              })
+              .onConflictDoNothing()
+              .returning();
 
-              if(!newUrl) {
-                logger.info(`URL already exists in DB, skipping enqueue: ${entry.loc}`);
-                continue; // Skip if URL already exists (due to unique constraint)
-              }
-              await boss.send('url_queue', { url: entry.loc, sitemapId: siteMapId }, {
+            if (newUrl) {
+              await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId }, {
                 retryLimit: config.retryLimit,
                 retryDelay: config.retryDelay
               });
@@ -106,9 +128,19 @@ export async function startWorker(): Promise<void> {
         }
       }
 
+      // Mark sitemap as active and update counts
+      await db.update(sitemaps)
+        .set({ 
+          status: 'active', 
+          totalUrlsFound: totalItems, 
+          lastCheckedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(sitemaps.id, sitemapId));
+
     } catch (e) {
-      logger.error(`Error enqueuing sitemap ${siteMapUrl}: ${e instanceof Error ? e.message : 'Unknown error'}`);
-      throw e; // Let BullMQ handle retries based on the configuration
+      logger.error(`Error processing sitemap ${sitemapUrl}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      throw e;
     }
   });
 
@@ -117,40 +149,31 @@ export async function startWorker(): Promise<void> {
     localConcurrency: config.concurrency,
     batchSize: 1
   }, async (jobs: any[]) => {
-    // With batchSize: 1, jobs is an array with exactly one element
     const job = jobs[0];
-    const { pageUrl, sitemapId } = job.data;
+    const { url, sitemapId } = job.data;
     const jobId = job.id;
 
     try {
-      logger.info(`[Job ${jobId}] Starting scrape for: ${pageUrl}`);
+      logger.info(`[Job ${jobId}] Starting scrape for: ${url}`);
 
-      // 1. Mark as scraping
       await db.update(urls)
         .set({ status: 'scraping', updatedAt: new Date() })
-        .where(and(eq(urls.url, pageUrl), eq(urls.sitemapId, sitemapId)))
+        .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
 
-      // 3. Fetch
-      const res = await axios.get(pageUrl, {
+      const res = await axios.get(url, {
         timeout: config.timeout,
         headers: { 'User-Agent': config.userAgent },
         validateStatus: (status) => status < 500,
       });
 
-      // 4. Handle Status Codes
-      if (res.status === 429) {
-        throw new Error('Rate limited (429)');
-      }
+      if (res.status === 429) throw new Error('Rate limited (429)');
 
       if (res.status === 403 || res.status === 401) {
-        logger.warn(`[Job ${jobId}] Access denied (${res.status}). Permanent failure.`);
-        await db.update(urls)
-          .set({ status: 'failed' })
-          .where(and(eq(urls.url, pageUrl), eq(urls.sitemapId, sitemapId)));
-        return; // Job finished (handled failure)
+        logger.warn(`[Job ${jobId}] Access denied (${res.status}).`);
+        await db.update(urls).set({ status: 'failed' }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+        return;
       }
 
-      // 5. Extract and Save
       const contentType = res.headers['content-type'];
       if (contentType?.includes('text/html')) {
         await db.update(urls)
@@ -160,16 +183,14 @@ export async function startWorker(): Promise<void> {
             lastScrapedAt: new Date(),
             updatedAt: new Date(),
           })
-          .where(and(eq(urls.url, pageUrl), eq(urls.sitemapId, sitemapId)));
-        logger.info(`[Job ${jobId}] Successfully scraped: ${pageUrl}`);
+          .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+        logger.info(`[Job ${jobId}] Successfully scraped: ${url}`);
       } else {
         logger.warn(`[Job ${jobId}] Skipping non-HTML content (${contentType})`);
-        await db.update(urls)
-          .set({ status: 'failed' })
-          .where(and(eq(urls.url, pageUrl), eq(urls.sitemapId, sitemapId)));
+        await db.update(urls).set({ status: 'failed' }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
       }
     } catch (e) {
-      logger.error(`[Job ${jobId}] Failed to scrape ${pageUrl}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      logger.error(`[Job ${jobId}] Failed to scrape ${url}: ${e instanceof Error ? e.message : 'Unknown error'}`);
       throw e;
     }
   });
