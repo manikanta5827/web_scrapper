@@ -21,7 +21,7 @@
     "dev:server": "bun --hot server-init.ts",
     "dev:worker": "bun --hot worker-init.ts",
     "start:server": "bun server-init.ts",
-    "start:worker": "bun worker.ts",
+    "start:worker": "bun worker-init.ts",
     "queue:clear": "bun src/utils/clearQueue.ts",
     "db:clear": "bun src/utils/clearDb.ts",
     "system:clear": "bun run queue:clear && bun run db:clear",
