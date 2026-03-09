@@ -39,7 +39,7 @@ export function startServer() {
             });
           }
 
-          await boss.send('sitemap_queue', { siteMapUrl: siteMap.sitemapUrl, siteMapId: siteMap.id, depth: 0 }, {
+          await boss.send('sitemap_queue', { sitemapUrl: siteMap.sitemapUrl, sitemapId: siteMap.id, depth: 0 }, {
             retryLimit: config.retryLimit,
             retryDelay: config.retryDelay
           });
