@@ -20,23 +20,35 @@ export async function processSitemap(url: string): Promise<number | null> {
     const res = await axios.get(url, { timeout: config.timeout, headers: { 'User-Agent': config.userAgent } });
     const currentHash = hash(res.data);
     
+    // Check if we've seen this sitemap before in our database
     let sitemap = await db.select().from(sitemaps).where(eq(sitemaps.sitemapUrl, url)).limit(1).then(r => r[0]);
     
     if (sitemap) {
+      // If the hash hasn't changed, the sitemap content is identical. Skip processing.
       if (sitemap.lastHash === currentHash) {
         logger.info(`Sitemap content unchanged, skipping: ${url}`);
         return sitemap.id;
       }
+      // Update the existing sitemap record with the new hash and set status to processing
       await db.update(sitemaps).set({ lastHash: currentHash, status: 'processing', lastCheckedAt: new Date() }).where(eq(sitemaps.id, sitemap.id));
     } else {
+      // First time seeing this sitemap, create a new record
       const inserted = await db.insert(sitemaps).values({ sitemapUrl: url, lastHash: currentHash, status: 'processing', lastCheckedAt: new Date() }).returning();
       sitemap = inserted[0];
     }
 
     if (!sitemap) return null;
 
+    // Parse the XML content into a JavaScript object
     const result = await parseStringPromise(res.data, { explicitArray: false });
 
+    logger.debug(`Parsed sitemap XML for: ${url} is ${JSON.stringify(result,null,2)}`);
+
+    /**
+     * URLSET HANDLING:
+     * A urlset contains the actual web page URLs to be scraped.
+     * We process these URLs in batches to avoid overwhelming the database or queue.
+     */
     if (result.urlset?.url) {
       const urlList = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
       const sitemapId = sitemap.id;
@@ -65,6 +77,7 @@ export async function processSitemap(url: string): Promise<number | null> {
       await db.update(sitemaps).set({ status: 'active', totalUrlsFound: urlList.length, lastCheckedAt: new Date() }).where(eq(sitemaps.id, sitemapId));
     } else {
       logger.warn(`No urlset found in sitemap: ${url}.`);
+      // Revert status to failed or inactive if no urlset is found
       await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.id, sitemap.id));
     }
 

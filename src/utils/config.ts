@@ -36,4 +36,9 @@ export const config = {
 
   // 11. The filename where all system logs are stored
   logFile: 'app.log',
+  
+  // Connection Pool Settings
+  // Limiting each pool to 5-10 connections prevents "too many clients" errors
+  dbMaxConnections: 10,
+  bossMaxConnections: 10,
 } as const;

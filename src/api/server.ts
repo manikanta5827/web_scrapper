@@ -3,7 +3,7 @@ import { logger } from '../utils/logger';
 
 export function startServer() {
   const server = Bun.serve({
-    port: process.env.PORT || 3000,
+    port: process.env.PORT || 3003,
     async fetch(req) {
       const url = new URL(req.url);
 
