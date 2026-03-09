@@ -17,7 +17,7 @@ export const config = {
   concurrency: 3,
 
   // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
-  retryLimit: 3,
+  retryLimit: 1,
 
   // 6. How many seconds to wait before trying a failed job again
   retryDelay: 5,

@@ -33,10 +33,7 @@ export async function startWorker(): Promise<void> {
       // 1. Mark as scraping
       await db.update(urls)
         .set({ status: 'scraping', updatedAt: new Date() })
-        .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
-
-      // 2. Wait (Rate limiting)
-      await sleep(config.requestDelay);
+        .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)))
 
       // 3. Fetch
       const res = await axios.get(url, {
