@@ -8,6 +8,13 @@
       "when": 1773058237666,
       "tag": "0000_chilly_the_executioner",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773068502281,
+      "tag": "0001_nappy_scrambler",
+      "breakpoints": true
     }
   ]
 }
