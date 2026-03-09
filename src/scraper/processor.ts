@@ -11,28 +11,42 @@ import { logger } from '../utils/logger';
 const hash = (c: string) => createHash('sha256').update(c).digest('hex');
 
 /**
- * Processes a sitemap URL to extract and enqueue page URLs.
- * Ignores sitemap indexes and only processes direct urlset links.
+ * Processes a sitemap URL. 
+ * If it's an Index, it follows the sub-sitemaps.
+ * If it's a Urlset, it enqueues the page links.
  */
-export async function processSitemap(url: string): Promise<number | null> {
+export async function processSitemap(url: string, depth = 0): Promise<number | null> {
+  // Limit recursion depth to prevent infinite loops (max 3 levels)
+  if (depth > 3) {
+    logger.warn(`Max depth reached for: ${url}`);
+    return null;
+  }
+
   try {
     logger.debug(`Fetching sitemap: ${url}`);
-    const res = await axios.get(url, { timeout: config.timeout, headers: { 'User-Agent': config.userAgent } });
+    const res = await axios.get(url, { 
+      timeout: config.timeout, 
+      headers: { 'User-Agent': config.userAgent },
+      // Some sitemaps might have different encodings, 
+      // but axios handles common ones by default.
+    });
+
+    if (!res.data || typeof res.data !== 'string') {
+      logger.warn(`Sitemap ${url} returned empty or invalid data.`);
+      return null;
+    }
+
     const currentHash = hash(res.data);
     
-    // Check if we've seen this sitemap before in our database
     let sitemap = await db.select().from(sitemaps).where(eq(sitemaps.sitemapUrl, url)).limit(1).then(r => r[0]);
     
     if (sitemap) {
-      // If the hash hasn't changed, the sitemap content is identical. Skip processing.
       if (sitemap.lastHash === currentHash) {
         logger.info(`Sitemap content unchanged, skipping: ${url}`);
         return sitemap.id;
       }
-      // Update the existing sitemap record with the new hash and set status to processing
       await db.update(sitemaps).set({ lastHash: currentHash, status: 'processing', lastCheckedAt: new Date() }).where(eq(sitemaps.id, sitemap.id));
     } else {
-      // First time seeing this sitemap, create a new record
       const inserted = await db.insert(sitemaps).values({ sitemapUrl: url, lastHash: currentHash, status: 'processing', lastCheckedAt: new Date() }).returning();
       sitemap = inserted[0];
     }
@@ -40,48 +54,58 @@ export async function processSitemap(url: string): Promise<number | null> {
     if (!sitemap) return null;
 
     // Parse the XML content into a JavaScript object
-    const result = await parseStringPromise(res.data, { explicitArray: false });
+    // trim: true helps with whitespace issues
+    const result = await parseStringPromise(res.data, { 
+      explicitArray: false,
+      trim: true,
+      ignoreAttrs: false 
+    });
 
-    logger.debug(`Parsed sitemap XML for: ${url} is ${JSON.stringify(result,null,2)}`);
+    if (!result) {
+      logger.error(`Failed to parse XML for sitemap: ${url}`);
+      return sitemap.id;
+    }
 
-    /**
-     * URLSET HANDLING:
-     * A urlset contains the actual web page URLs to be scraped.
-     * We process these URLs in batches to avoid overwhelming the database or queue.
-     */
-    if (result.urlset?.url) {
+    // CASE 1: This is a Sitemap Index (Contains links to other sitemaps)
+    if (result.sitemapindex && result.sitemapindex.sitemap) {
+      const nested = Array.isArray(result.sitemapindex.sitemap) ? result.sitemapindex.sitemap : [result.sitemapindex.sitemap];
+      logger.info(`Found sitemap index with ${nested.length} sub-sitemaps: ${url}`);
+      for (const entry of nested) {
+        if (entry.loc) {
+          // Recursively process the sub-sitemap
+          await processSitemap(entry.loc, depth + 1);
+        }
+      }
+    }
+
+    // CASE 2: This is a Urlset (Contains actual page URLs)
+    else if (result.urlset && result.urlset.url) {
       const urlList = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
       const sitemapId = sitemap.id;
       logger.info(`Found ${urlList.length} page URLs in sitemap: ${url}`);
       
-      // Sequential processing: one after another
       for (const entry of urlList) {
         try {
           const loc = entry.loc;
           if (!loc) continue;
           
-          // Check if URL already exists for this sitemap
           const exists = await db.select().from(urls).where(and(eq(urls.url, loc), eq(urls.sitemapId, sitemapId))).limit(1);
           
-          // If not exists, insert and enqueue
           if (exists.length === 0) {
             await db.insert(urls).values({ url: loc, sitemapId: sitemapId });
             await boss.send('scrape_queue', { url: loc, sitemapId: sitemapId }, { retryLimit: config.retryLimit, retryDelay: config.retryDelay });
             logger.debug(`Enqueued new URL: ${loc}`);
           }
         } catch (e) {
-          logger.error(`Failed to process individual URL ${entry?.loc} from sitemap: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          logger.error(`Failed to process individual URL ${entry?.loc}: ${e instanceof Error ? e.message : 'Unknown error'}`);
         }
       }
-      
       await db.update(sitemaps).set({ status: 'active', totalUrlsFound: urlList.length, lastCheckedAt: new Date() }).where(eq(sitemaps.id, sitemapId));
     } else {
-      logger.warn(`No urlset found in sitemap: ${url}.`);
-      // Revert status to failed or inactive if no urlset is found
-      await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.id, sitemap.id));
+      logger.warn(`No sitemapindex or urlset recognized in: ${url}`);
     }
 
-    logger.info(`Successfully processed sitemap: ${url}`);
+    logger.info(`Successfully finished processing: ${url}`);
     return sitemap.id;
   } catch (e) {
     logger.error(`Error processing sitemap ${url}: ${e instanceof Error ? e.message : 'Unknown error'}`);
