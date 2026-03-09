@@ -12,6 +12,7 @@ export const config = {
   retryDelay: 5,
   requestDelay: 3000,
   maxContentLength: 50000,
-  maxSitemapDepth: 3,
   batchSize: 100,
+  env: process.env.NODE_ENV || 'development',
+  logFile: 'app.log',
 } as const;
