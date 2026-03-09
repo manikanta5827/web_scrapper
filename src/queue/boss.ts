@@ -1,16 +1,17 @@
 import { PgBoss } from 'pg-boss';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 
 export const boss = new PgBoss(config.databaseUrl);
 
-boss.on('error', (e: any) => console.error(`[ERROR] pg-boss: ${e.message}`));
+boss.on('error', (e: Error) => logger.error(`pg-boss: ${e.message}`));
 
 export async function initQueue(): Promise<void> {
   await boss.start();
-  console.log('[INFO] pg-boss queue started');
+  logger.info('pg-boss queue started');
 }
 
 export async function stopQueue(): Promise<void> {
   await boss.stop();
-  console.log('[INFO] pg-boss queue stopped');
+  logger.info('pg-boss queue stopped');
 }
