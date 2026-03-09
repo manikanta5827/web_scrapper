@@ -16,7 +16,7 @@ export async function checkConnection(): Promise<void> {
       return;
     } catch (err) {
       retries--;
-      console.warn(`[WARN] DB connection failed. Retries left: ${retries}`);
+      console.warn(`[WARN] DB connection failed. Retries left: ${retries}. ${err instanceof Error ? err.message : ''}`);
       if (retries === 0) throw new Error('Database connection failed');
       await new Promise(r => setTimeout(r, 2000));
     }
