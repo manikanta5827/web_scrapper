@@ -1,5 +1,8 @@
-import { processSitemap } from '../scraper/processor';
 import { logger } from '../utils/logger';
+import { db } from '../db/client';
+import { sitemaps } from '../db/schema';
+import { config } from '../utils/config';
+import { boss } from '../queue/boss';
 
 export function startServer() {
   const server = Bun.serve({
@@ -21,10 +24,27 @@ export function startServer() {
           }
 
           logger.info(`POST /scrape: Received request for ${sitemapUrl}`);
-          // Trigger processing in background
-          const sitemapId = await processSitemap(sitemapUrl);
+          // add the sitemap to db and queue
+          const [siteMap] = await db.insert(sitemaps).values({
+            sitemapUrl,
+            status: 'active',
+          }).returning();
 
-          return new Response(JSON.stringify({ message: 'Accepted', id: sitemapId }), {
+          // Enqueue the sitemap for processing if it was successfully added to the DB
+          if (!siteMap) {
+            logger.info(`POST /scrape: Sitemap already exists in DB, skipping enqueue: ${sitemapUrl}`);
+            return new Response(JSON.stringify({ error: 'Sitemap already exists' }), {
+              status: 409,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+
+          await boss.send('sitemap_queue', { siteMapUrl: siteMap.sitemapUrl, siteMapId: siteMap.id, depth: 0 }, {
+            retryLimit: config.retryLimit,
+            retryDelay: config.retryDelay
+          });
+
+          return new Response(JSON.stringify({ message: 'Accepted', id: siteMap?.id }), {
             status: 202,
             headers: { 'Content-Type': 'application/json' },
           });
