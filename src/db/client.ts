@@ -4,7 +4,11 @@ import { config } from '../utils/config';
 import * as schema from './schema';
 import { logger } from '../utils/logger';
 
-const pool = new Pool({ connectionString: config.databaseUrl });
+const pool = new Pool({ 
+  connectionString: config.databaseUrl,
+  max: config.dbMaxConnections, // Explicitly limit the pool size
+});
+
 export const db = drizzle(pool, { schema });
 
 export async function checkConnection(): Promise<void> {
