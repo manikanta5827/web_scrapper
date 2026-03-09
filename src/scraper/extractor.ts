@@ -6,8 +6,6 @@ export function extract(html: string): string {
   $('script, style, nav, footer, header, aside').remove();
   return $('body').text()
     .replace(/\s+/g, ' ')
-    .replace(/
-+/g, ' ')
     .trim()
     .slice(0, config.maxContentLength);
 }
