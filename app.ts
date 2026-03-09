@@ -1,9 +1,11 @@
 import { checkConnection, closeDb } from './src/db/client';
 import { initQueue, stopQueue } from './src/queue/boss';
 import { startWorker } from './src/scraper/worker';
+import { startServer } from './src/api/server';
+import { logger } from './src/utils/logger';
 
 async function main(): Promise<void> {
-  console.log('[INFO] Initializing Web Scraper System...');
+  logger.info('Initializing Web Scraper System...');
 
   try {
     // 1. Verify DB Connection
@@ -15,23 +17,26 @@ async function main(): Promise<void> {
     // 3. Start Workers
     await startWorker();
 
-    console.log('[INFO] System fully operational');
+    // 4. Start API Server
+    startServer();
+
+    logger.info('System fully operational');
 
   } catch (error) {
-    console.error(`[FATAL] Startup failed: ${error instanceof Error ? error.message : 'Unknown'}`);
+    logger.error(`Startup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     await shutdown();
     process.exit(1);
   }
 }
 
 async function shutdown(): Promise<void> {
-  console.log('[INFO] Shutting down gracefully...');
+  logger.info('Shutting down gracefully...');
   try {
     await stopQueue();
     await closeDb();
-    console.log('[INFO] Graceful shutdown complete');
+    logger.info('Graceful shutdown complete');
   } catch (error) {
-    console.error(`[ERROR] Shutdown error: ${error instanceof Error ? error.message : 'Unknown'}`);
+    logger.error(`Shutdown error: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
