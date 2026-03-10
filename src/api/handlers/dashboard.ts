@@ -10,7 +10,7 @@ export async function handleDashboard(req: Request, url: URL): Promise<Response>
     let html = await file.text();
     
     // Inject dynamic values
-    html = html.replaceAll('{{rootId}}', rootId);
+    html = html.replaceAll('{{rootId}}', rootId || '');
     html = html.replaceAll('{{supabaseUrl}}', process.env.SUPABASE_URL || '');
     html = html.replaceAll('{{supabaseAnonKey}}', process.env.SUPABASE_ANON_KEY || '');
     
