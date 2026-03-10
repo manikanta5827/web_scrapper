@@ -1,13 +1,17 @@
 import TurndownService from 'turndown';
-import { config } from '../utils/config';
 
 const turndownService = new TurndownService({
   headingStyle: 'atx',
   codeBlockStyle: 'fenced',
 });
 
-// Remove unnecessary elements before conversion
-turndownService.remove(['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript']);
+// Remove unnecessary elements before conversion to keep Markdown clean and save space
+turndownService.remove([
+  'script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript',
+  'img', 'svg', 'canvas', 'video', 'audio', 'source', 'track',
+  'form', 'button', 'input', 'select', 'option', 'textarea',
+  'head', 'meta', 'link'
+]);
 
 /**
  * Converts HTML to clean, readable Markdown.
@@ -23,6 +27,5 @@ export function extract(html: string): string {
   // Clean up whitespace and slice to max length
   return markdown
     .replace(/\n{3,}/g, '\n\n') // Normalize multiple newlines
-    .trim()
-    .slice(0, config.maxContentLength);
+    .trim();
 }

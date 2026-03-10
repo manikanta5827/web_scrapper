@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, timestamp, integer, index } from 'drizzle-orm/pg-core';
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 
 export const sitemaps = pgTable('sitemaps', {
@@ -12,6 +12,10 @@ export const sitemaps = pgTable('sitemaps', {
   failureReason: text('failure_reason'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => {
+  return {
+    rootIdIdx: index('sitemaps_root_id_idx').on(table.rootId),
+  };
 });
 
 export const urls = pgTable('urls', {
@@ -27,6 +31,12 @@ export const urls = pgTable('urls', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   lastScrapedAt: timestamp('last_scraped_at'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => {
+  return {
+    rootIdIdx: index('urls_root_id_idx').on(table.rootId),
+    statusIdx: index('urls_status_idx').on(table.status),
+    combinedIdx: index('urls_root_status_idx').on(table.rootId, table.status),
+  };
 });
 
 export const healthChecks = pgTable('health_checks', {
