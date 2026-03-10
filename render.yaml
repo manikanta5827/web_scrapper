@@ -5,12 +5,11 @@ services:
     name: web-scraper-all-in-one
     runtime: docker
     plan: free
-    dockerCommand: chmod +x start.sh && ./start.sh
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 10000 # Render uses 10000 by default for Web Services
+        value: 10000
       - fromGroup: web-scraper-secrets
 
 # Environment Group for secrets

@@ -13,12 +13,15 @@ RUN bun install
 # Copy the rest of the application code
 COPY . .
 
-# Set environment variables (these will be overridden by Render)
+# Make the start script executable during the build phase
+RUN chmod +x start.sh
+
+# Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3003
+ENV PORT=10000
 
 # Expose the API port
-EXPOSE 3003
+EXPOSE 10000
 
-# Default start command (can be overridden in render.yaml)
-CMD ["bun", "run", "start:server"]
+# Use the start script as the entry point
+CMD ["./start.sh"]
