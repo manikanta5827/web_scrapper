@@ -53,7 +53,13 @@ export const config = {
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
   },
 
-  // Connection Pool Settings
-  dbMaxConnections: 20,
-  bossMaxConnections: 20,
+  // Connection Pool Settings (Optimized for Supabase Free Tier)
+  // Supabase Pooler (Port 6543) allows 200 client connections.
+  // The backend database allows 20 connections.
+  // We have 3 processes (Server, Sitemap Worker, Page Worker).
+  // Total client connections = 3 * (5 + 10) = 45 (Safe)
+  dbMaxConnections: 5,
+  bossMaxConnections: 10,
+  dbConnectionTimeout: 60000, // 60 seconds
+  dbIdleTimeout: 30000,       // 30 seconds
 } as const;

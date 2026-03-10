@@ -43,6 +43,13 @@
       "when": 1773125699277,
       "tag": "0005_empty_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773173186483,
+      "tag": "0006_fine_typhoid_mary",
+      "breakpoints": true
     }
   ]
 }

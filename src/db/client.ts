@@ -6,7 +6,9 @@ import { logger } from '../utils/logger';
 
 const pool = new Pool({ 
   connectionString: config.databaseUrl,
-  max: config.dbMaxConnections, // Explicitly limit the pool size
+  max: config.dbMaxConnections,
+  connectionTimeoutMillis: config.dbConnectionTimeout,
+  idleTimeoutMillis: config.dbIdleTimeout,
 });
 
 export const db = drizzle(pool, { schema });
