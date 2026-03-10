@@ -22,12 +22,12 @@ Stores the extracted content and metadata of individual pages.
 - **`url`**: The unique page URL.
 - **`lastMod`**: Timestamp from the sitemap entry. Used for **Conditional Re-scraping** (only scrape if newer).
 - **`s3Url`**: Link to the raw HTML file archived in S3.
+- **`mdS3Url`**: Link to the cleaned Markdown file archived in S3.
 - **`status`**: Current state (`queued`, `scraping`, `done`, `failed`).
-- **`rawContent`**: The cleaned, extracted content in **Markdown** format.
 - **`lastScrapedAt`**: The actual time the worker successfully finished scraping the page.
 
 ## Key Design Decisions
 
 - **Hierarchy via `rootId`**: Instead of expensive recursive joins, every record stores the ID of the "Origin" sitemap. This makes it possible to get a status report for a million-page crawl with a single `WHERE root_id = X` query.
 - **LastMod Optimization**: We compare the XML's `lastmod` with our stored `lastMod`. If the XML timestamp is older or missing, we skip the re-scrape, saving bandwidth and compute.
-- **Markdown over HTML**: We store clean Markdown in the DB. This reduces storage size by 70-90% compared to raw HTML while remaining perfectly structured for LLMs.
+- **S3 Storage for Content**: We store both raw HTML and cleaned Markdown in S3 instead of the database. This prevents hitting database storage limits (like Supabase's 500MB free tier) while keeping content highly available. Markdown is ideal for LLMs.

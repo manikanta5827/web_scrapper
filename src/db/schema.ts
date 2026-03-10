@@ -24,7 +24,6 @@ export const urls = pgTable('urls', {
   mdS3Url: text('md_s3_url'), // Link to cleaned Markdown in S3
   status: text('status', { enum: ['queued', 'scraping', 'scraped', 'processing', 'done', 'failed'] }).default('queued'),
   failureReason: text('failure_reason'),
-  rawContent: text('raw_content'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   lastScrapedAt: timestamp('last_scraped_at'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

@@ -203,7 +203,6 @@ async function processPage(data: any, jobId: string): Promise<void> {
         .set({
           s3Url: s3Url,
           mdS3Url: mdS3Url,
-          rawContent: cleanContent,
           status: 'done',
           lastScrapedAt: new Date(),
           updatedAt: new Date(),
