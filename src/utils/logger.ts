@@ -23,14 +23,3 @@ export const logger = winston.createLogger({
     }),
   ],
 });
-
-// If in development, also log to the console with colors
-if (config.env === 'development') {
-  logger.add(new winston.transports.Console({
-    format: combine(
-      colorize(),
-      timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-      logFormat
-    ),
-  }));
-}
