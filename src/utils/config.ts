@@ -5,7 +5,7 @@ if (!process.env.DATABASE_URL) {
 
 export const config = {
   // 1. Connection string for your local or remote PostgreSQL database
-  databaseUrl: process.env.DATABASE_URL as string,
+  databaseUrl: (process.env.DATABASE_URL as string).replace(/\\\$/g, '$'),
 
   // 2. The identity string sent to websites so they know who is scraping them
   userAgent: 'Mozilla/5.0 (compatible; WebScraper/1.0)',
@@ -16,8 +16,8 @@ export const config = {
   // 4. Concurrency settings for the unified worker engine
   workerConcurrency: {
     min: 1,
-    max: 150,
-    scaleUpThreshold: 10, // total jobs per worker to trigger scale up
+    max: 200,
+    scaleUpThreshold: 5, // total jobs per worker to trigger scale up
     pollInterval: 5000,    // check every 5 seconds for fast response
   },
 
