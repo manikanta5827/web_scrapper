@@ -1,15 +1,55 @@
 import { logger } from '../utils/logger';
 import { db } from '../db/client';
-import { sitemaps } from '../db/schema';
+import { sitemaps, urls as urlsTable } from '../db/schema';
 import { config } from '../utils/config';
 import { boss } from '../queue/boss';
-import { eq } from 'drizzle-orm';
+import { eq, count } from 'drizzle-orm';
 
 export function startServer() {
   const server = Bun.serve({
     port: process.env.PORT || 3003,
     async fetch(req) {
       const url = new URL(req.url);
+
+      // Handle GET /status/:rootId
+      if (req.method === 'GET' && url.pathname.startsWith('/status/')) {
+        const rootId = parseInt(url.pathname.split('/').pop() || '');
+        
+        if (isNaN(rootId)) {
+          return new Response(JSON.stringify({ error: 'Invalid rootId' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        try {
+          const results = await db
+            .select({
+              status: urlsTable.status,
+              count: count(),
+            })
+            .from(urlsTable)
+            .where(eq(urlsTable.rootId, rootId))
+            .groupBy(urlsTable.status);
+
+          const total = results.reduce((acc, curr) => acc + curr.count, 0);
+
+          return new Response(JSON.stringify({
+            rootId,
+            total,
+            breakdown: results
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        } catch (e) {
+          logger.error(`GET /status/${rootId}: Error fetching status: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          return new Response(JSON.stringify({ error: 'Server error fetching status' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
 
       if (req.method === 'POST' && url.pathname === '/scrape') {
         try {

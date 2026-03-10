@@ -2,12 +2,12 @@
 
 Direct interaction with the scraping system.
 
-### Base URL: `http://localhost:3003`
+### Base URL: `http://localhost:3003` (Local) or `https://your-app.onrender.com` (Production)
 
 ---
 
 ### POST `/scrape`
-Submit a sitemap. Returns `rootId` for status tracking.
+Submit a sitemap to begin the recursive scraping process.
 
 - **Request:**
   ```json
@@ -15,20 +15,36 @@ Submit a sitemap. Returns `rootId` for status tracking.
   ```
 - **Response (202):**
   ```json
-  { "message": "Accepted", "id": 1, "rootId": 1 }
+  { 
+    "message": "Accepted", 
+    "id": 1, 
+    "rootId": 1 
+  }
+  ```
+  *Note: Use the `rootId` to track the progress of the entire crawl.*
+
+---
+
+### GET `/status/:rootId`
+Get a real-time progress report for a specific crawl by its `rootId`.
+
+- **Endpoint:** `/status/1`
+- **Response (200):**
+  ```json
+  {
+    "rootId": 1,
+    "total": 475,
+    "breakdown": [
+      { "status": "completed", "count": 450 },
+      { "status": "active", "count": 20 },
+      { "status": "failed", "count": 5 }
+    ]
+  }
   ```
 
 ---
 
-### Tracking Status (CLI Tool)
-The system uses `rootId` to group all related sitemaps and URLs.
-
-- **Run:** `bun run db:status <rootId>`
-
-- **Output Example:**
-  | status | count |
-  |--------|-------|
-  | done   | 450   |
-  | queued | 20    |
-  | failed | 5     |
-  Total URLs: 475
+### Data Storage
+- **Database:** PostgreSQL (Metadata, Sitemap hierarchy, URL status)
+- **Files:** AWS S3 (Raw HTML stored as `.html` files)
+- **Queue:** pg-boss (Background job processing)
