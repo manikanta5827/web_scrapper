@@ -1,41 +1,19 @@
-# Render Blueprint for Web Scraper
+# Render Blueprint for Web Scraper (Free Plan Compatible)
 services:
-  # 1. The API Server (Web Service)
+  # The All-in-One Web Service (Runs API + Both Workers)
   - type: web
-    name: web-scraper-api
+    name: web-scraper-all-in-one
     runtime: docker
     plan: free
-    dockerCommand: bun run db:push && bun run start:server
+    dockerCommand: chmod +x start.sh && ./start.sh
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 3003
+        value: 10000 # Render uses 10000 by default for Web Services
       - fromGroup: web-scraper-secrets
 
-  # 2. The Sitemap Worker (Background Worker)
-  - type: worker
-    name: web-scraper-sitemap-worker
-    runtime: docker
-    plan: free
-    dockerCommand: bun run start:worker:sitemap
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - fromGroup: web-scraper-secrets
-
-  # 3. The Page Worker (Background Worker)
-  - type: worker
-    name: web-scraper-page-worker
-    runtime: docker
-    plan: free
-    dockerCommand: bun run start:worker:page
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - fromGroup: web-scraper-secrets
-
-# Environment Group to share secrets across all services
+# Environment Group for secrets
 envVarGroups:
   - name: web-scraper-secrets
     envVars:
