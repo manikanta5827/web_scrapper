@@ -18,6 +18,10 @@ envVarGroups:
     envVars:
       - key: DATABASE_URL
         value: "replace-with-your-supabase-url"
+      - key: SUPABASE_URL
+        value: "supabase-url-placeholder"
+      - key: SUPABASE_ANON_KEY
+        value: "supabase-anon-key-placeholder"
       - key: AWS_ACCESS_KEY_ID
         value: "replace-with-your-key"
       - key: AWS_SECRET_ACCESS_KEY
