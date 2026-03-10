@@ -21,6 +21,15 @@ function parseDate(dateStr: any): Date | null {
 }
 
 /**
+ * Helper to handle DB errors during worker processing (e.g. if parent was deleted)
+ */
+function isNotFoundError(e: any): boolean {
+  // Check for Postgres Foreign Key Violation (23503) or generic "not found"
+  const code = e?.code || e?.cause?.code;
+  return code === '23503';
+}
+
+/**
  * Logic for processing sitemaps
  */
 async function processSitemap(data: any): Promise<void> {
@@ -39,7 +48,12 @@ async function processSitemap(data: any): Promise<void> {
     });
 
     if (!res.data || typeof res.data !== 'string') {
-      await db.update(sitemaps).set({ status: 'failed', failureReason: 'Empty sitemap response' }).where(eq(sitemaps.id, sitemapId));
+      try {
+        await db.update(sitemaps).set({ status: 'failed', failureReason: 'Empty sitemap response' }).where(eq(sitemaps.id, sitemapId));
+      } catch (dbErr) {
+        if (isNotFoundError(dbErr)) return; // Silently exit if sitemap was deleted
+        throw dbErr;
+      }
       return;
     }
 
@@ -50,7 +64,12 @@ async function processSitemap(data: any): Promise<void> {
     });
 
     if (!result) {
-      await db.update(sitemaps).set({ status: 'failed', failureReason: 'Failed to parse XML' }).where(eq(sitemaps.id, sitemapId));
+      try {
+        await db.update(sitemaps).set({ status: 'failed', failureReason: 'Failed to parse XML' }).where(eq(sitemaps.id, sitemapId));
+      } catch (dbErr) {
+        if (isNotFoundError(dbErr)) return;
+        throw dbErr;
+      }
       return;
     }
 
@@ -65,43 +84,7 @@ async function processSitemap(data: any): Promise<void> {
         if (!entry.loc) continue;
         const lastMod = parseDate(entry.lastmod);
 
-        const [newSitemap] = await db.insert(sitemaps)
-          .values({ 
-            parentId: sitemapId, 
-            rootId: rootId,
-            sitemapUrl: entry.loc, 
-            status: 'processing',
-            lastMod: lastMod
-          })
-          .onConflictDoUpdate({ 
-            target: sitemaps.sitemapUrl, 
-            set: { updatedAt: new Date() }
-          })
-          .returning();
-
-        const sId = newSitemap?.id || (await db.select({ id: sitemaps.id }).from(sitemaps).where(eq(sitemaps.sitemapUrl, entry.loc)))[0]?.id;
-
-        if (sId) {
-          if (newSitemap) logger.info(`Discovered new sitemap: ${entry.loc}`);
-          await boss.send('sitemap_queue', { 
-            sitemapUrl: entry.loc, 
-            sitemapId: sId, 
-            rootId: rootId,
-            depth: depth + 1 
-          }, { priority: 10 });
-        }
-      }
-    } else if (result.urlset?.url) {
-      const entries = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
-      totalItems = entries.length;
-
-      for (const entry of entries) {
-        if (!entry.loc || typeof entry.loc !== 'string') continue;
-        const baseUrl = entry.loc.split('?')[0] ?? '';
-        const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
-        const lastMod = parseDate(entry.lastmod);
-
-        if (isSitemap) {
+        try {
           const [newSitemap] = await db.insert(sitemaps)
             .values({ 
               parentId: sitemapId, 
@@ -115,11 +98,11 @@ async function processSitemap(data: any): Promise<void> {
               set: { updatedAt: new Date() }
             })
             .returning();
-          
+
           const sId = newSitemap?.id || (await db.select({ id: sitemaps.id }).from(sitemaps).where(eq(sitemaps.sitemapUrl, entry.loc)))[0]?.id;
 
           if (sId) {
-            if (newSitemap) logger.info(`Discovered nested sitemap: ${entry.loc}`);
+            if (newSitemap) logger.info(`Discovered new sitemap: ${entry.loc}`);
             await boss.send('sitemap_queue', { 
               sitemapUrl: entry.loc, 
               sitemapId: sId, 
@@ -127,39 +110,101 @@ async function processSitemap(data: any): Promise<void> {
               depth: depth + 1 
             }, { priority: 10 });
           }
-        } else {
-          const [newUrl] = await db.insert(urls)
-            .values({ 
-              sitemapId: sitemapId, 
-              rootId: rootId,
-              url: entry.loc, 
-              status: 'queued',
-              lastMod: lastMod
-            })
-            .onConflictDoUpdate({
-              target: urls.url,
-              set: { updatedAt: new Date() },
-            })
-            .returning();
-          
-          const uId = newUrl?.id || (await db.select({ id: urls.id }).from(urls).where(eq(urls.url, entry.loc)))[0]?.id;
-
-          if (uId) {
-            if (newUrl) logger.info(`Queued URL for scraping: ${entry.loc}`);
-            await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId, rootId: rootId }, { priority: 1 });
+        } catch (dbErr) {
+          if (isNotFoundError(dbErr)) {
+            logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping crawl for this branch.`);
+            return;
           }
+          throw dbErr;
+        }
+      }
+    } else if (result.urlset?.url) {
+      const entries = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
+      totalItems = entries.length;
+
+      for (const entry of entries) {
+        if (!entry.loc || typeof entry.loc !== 'string') continue;
+        const baseUrl = entry.loc.split('?')[0] ?? '';
+        const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
+        const lastMod = parseDate(entry.lastmod);
+
+        try {
+          if (isSitemap) {
+            const [newSitemap] = await db.insert(sitemaps)
+              .values({ 
+                parentId: sitemapId, 
+                rootId: rootId,
+                sitemapUrl: entry.loc, 
+                status: 'processing',
+                lastMod: lastMod
+              })
+              .onConflictDoUpdate({ 
+                target: sitemaps.sitemapUrl, 
+                set: { updatedAt: new Date() }
+              })
+              .returning();
+            
+            const sId = newSitemap?.id || (await db.select({ id: sitemaps.id }).from(sitemaps).where(eq(sitemaps.sitemapUrl, entry.loc)))[0]?.id;
+
+            if (sId) {
+              if (newSitemap) logger.info(`Discovered nested sitemap: ${entry.loc}`);
+              await boss.send('sitemap_queue', { 
+                sitemapUrl: entry.loc, 
+                sitemapId: sId, 
+                rootId: rootId,
+                depth: depth + 1 
+              }, { priority: 10 });
+            }
+          } else {
+            const [newUrl] = await db.insert(urls)
+              .values({ 
+                sitemapId: sitemapId, 
+                rootId: rootId,
+                url: entry.loc, 
+                status: 'queued',
+                lastMod: lastMod
+              })
+              .onConflictDoUpdate({
+                target: urls.url,
+                set: { updatedAt: new Date() },
+              })
+              .returning();
+            
+            const uId = newUrl?.id || (await db.select({ id: urls.id }).from(urls).where(eq(urls.url, entry.loc)))[0]?.id;
+
+            if (uId) {
+              if (newUrl) logger.info(`Queued URL for scraping: ${entry.loc}`);
+              await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId, rootId: rootId }, { priority: 1 });
+            }
+          }
+        } catch (dbErr) {
+          if (isNotFoundError(dbErr)) {
+            logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping branch processing.`);
+            return;
+          }
+          throw dbErr;
         }
       }
     }
 
-    await db.update(sitemaps)
-      .set({ status: 'active', totalUrlsFound: totalItems, updatedAt: new Date() })
-      .where(eq(sitemaps.id, sitemapId));
+    try {
+      await db.update(sitemaps)
+        .set({ status: 'active', totalUrlsFound: totalItems, updatedAt: new Date() })
+        .where(eq(sitemaps.id, sitemapId));
+    } catch (dbErr) {
+      if (isNotFoundError(dbErr)) return;
+      throw dbErr;
+    }
 
   } catch (e) {
+    if (isNotFoundError(e)) return;
     const msg = e instanceof Error ? e.message : 'Unknown error';
     logger.error(`Error processing sitemap ${sitemapUrl}: ${msg}`);
-    await db.update(sitemaps).set({ status: 'failed', failureReason: msg }).where(eq(sitemaps.id, sitemapId));
+    try {
+      await db.update(sitemaps).set({ status: 'failed', failureReason: msg }).where(eq(sitemaps.id, sitemapId));
+    } catch (dbErr) {
+      // Ignore if already deleted
+    }
     throw e;
   }
 }
@@ -171,10 +216,21 @@ async function processPage(data: any, jobId: string): Promise<void> {
   const { url, sitemapId } = data;
 
   try {
-    logger.info(`[Page Worker ${jobId}] Scraping: ${url}`);
-    await db.update(urls)
-      .set({ status: 'scraping', updatedAt: new Date() })
-      .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+    try {
+      logger.info(`[Page Worker ${jobId}] Scraping: ${url}`);
+      const [updated] = await db.update(urls)
+        .set({ status: 'scraping', updatedAt: new Date() })
+        .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)))
+        .returning();
+      
+      if (!updated) {
+        logger.warn(`[Page Worker ${jobId}] URL ${url} not found in DB, it might have been deleted. Skipping.`);
+        return;
+      }
+    } catch (dbErr) {
+      if (isNotFoundError(dbErr)) return;
+      throw dbErr;
+    }
 
     await sleep(Math.floor(Math.random() * 2000) + 1000);
     
@@ -186,7 +242,12 @@ async function processPage(data: any, jobId: string): Promise<void> {
 
     if (res.status === 429) throw new Error('Rate limited (429)');
     if (res.status === 403 || res.status === 401) {
-      await db.update(urls).set({ status: 'failed', failureReason: `Auth error: ${res.status}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+      try {
+        await db.update(urls).set({ status: 'failed', failureReason: `Auth error: ${res.status}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+      } catch (dbErr) {
+        if (isNotFoundError(dbErr)) return;
+        throw dbErr;
+      }
       return;
     }
 
@@ -199,24 +260,39 @@ async function processPage(data: any, jobId: string): Promise<void> {
       const cleanContent = extract(res.data);
       const mdS3Url = await uploadToS3(url, cleanContent, 'md');
 
-      await db.update(urls)
-        .set({
-          s3Url: s3Url,
-          mdS3Url: mdS3Url,
-          status: 'done',
-          lastScrapedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
-      
-      logger.info(`[Page Worker ${jobId}] Successfully scraped & archived (HTML + MD): ${url}`);
+      try {
+        await db.update(urls)
+          .set({
+            s3Url: s3Url,
+            mdS3Url: mdS3Url,
+            status: 'done',
+            lastScrapedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+        
+        logger.info(`[Page Worker ${jobId}] Successfully scraped & archived (HTML + MD): ${url}`);
+      } catch (dbErr) {
+        if (isNotFoundError(dbErr)) return;
+        throw dbErr;
+      }
     } else {
-      await db.update(urls).set({ status: 'failed', failureReason: `Invalid content type: ${contentType}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+      try {
+        await db.update(urls).set({ status: 'failed', failureReason: `Invalid content type: ${contentType}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+      } catch (dbErr) {
+        if (isNotFoundError(dbErr)) return;
+        throw dbErr;
+      }
     }
   } catch (e) {
+    if (isNotFoundError(e)) return;
     const msg = e instanceof Error ? e.message : 'Unknown error';
     logger.error(`[Page Worker ${jobId}] Failed to scrape ${url}: ${msg}`);
-    await db.update(urls).set({ status: 'failed', failureReason: msg }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+    try {
+      await db.update(urls).set({ status: 'failed', failureReason: msg }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+    } catch (dbErr) {
+      // Ignore
+    }
     throw e;
   }
 }

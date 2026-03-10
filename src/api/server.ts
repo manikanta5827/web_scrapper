@@ -5,6 +5,7 @@ import { handleStatus, handleGlobalStatus } from './handlers/status';
 import { handleDashboard } from './handlers/dashboard';
 import { handleUrls } from './handlers/urls';
 import { handleLogs } from './handlers/logs';
+import { handleGetSitemaps, handleDeleteSitemap } from './handlers/sitemaps';
 
 export function startServer() {
   const server = Bun.serve({
@@ -46,6 +47,15 @@ export function startServer() {
       // --- API: LOGS ---
       if (req.method === 'GET' && url.pathname === '/api/logs') {
         return handleLogs();
+      }
+
+      // --- API: SITEMAPS ---
+      if (req.method === 'GET' && url.pathname === '/api/sitemaps') {
+        return handleGetSitemaps();
+      }
+
+      if (req.method === 'DELETE' && url.pathname.startsWith('/api/sitemaps/')) {
+        return handleDeleteSitemap(req, url);
       }
 
       // --- STATUS ---

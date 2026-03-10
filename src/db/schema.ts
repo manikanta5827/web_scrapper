@@ -1,9 +1,10 @@
 import { pgTable, serial, text, timestamp, integer, index } from 'drizzle-orm/pg-core';
+import { type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 
 export const sitemaps = pgTable('sitemaps', {
   id: serial('id').primaryKey(),
-  parentId: integer('parent_id'), // Reference to the parent sitemap if nested
+  parentId: integer('parent_id').references((): AnyPgColumn => sitemaps.id, { onDelete: 'cascade' }), // Reference to the parent sitemap if nested
   rootId: integer('root_id'), // Reference to the top-level sitemap
   sitemapUrl: text('sitemap_url').notNull().unique(),
   lastMod: timestamp('last_mod'),
@@ -20,7 +21,7 @@ export const sitemaps = pgTable('sitemaps', {
 
 export const urls = pgTable('urls', {
   id: serial('id').primaryKey(),
-  sitemapId: integer('sitemap_id').references(() => sitemaps.id).notNull(),
+  sitemapId: integer('sitemap_id').references(() => sitemaps.id, { onDelete: 'cascade' }).notNull(),
   rootId: integer('root_id'), // Reference to the top-level sitemap
   url: text('url').notNull().unique(),
   lastMod: timestamp('last_mod'),

@@ -142,11 +142,28 @@
           </td>
           <td class="timestamp">${new Date(s.created_at).toLocaleString()}</td>
           <td><span class="badge status-${s.status}">${s.status}</span></td>
-          <td>
+          <td style="display: flex; gap: 8px;">
             <a href="/dashboard/${s.id}" class="btn-primary" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">View Detail</a>
+            <button onclick="deleteSitemap(${s.id})" style="padding: 6px 12px; font-size: 12px; cursor: pointer; background: #ef4444; color: white; border: none; border-radius: 4px;">Delete</button>
           </td>
         </tr>
       `).join('');
+    }
+
+    async function deleteSitemap(id) {
+      if (!confirm('Are you sure? This will delete this sitemap, all its sub-sitemaps and all scraped URLs.')) return;
+      
+      try {
+        const res = await fetch(`/api/sitemaps/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          fetchScrapes();
+        } else {
+          alert('Failed to delete sitemap');
+        }
+      } catch (err) {
+        console.error('Delete error:', err);
+        alert('Error deleting sitemap');
+      }
     }
 
     async function updateWorkerStatus() {
