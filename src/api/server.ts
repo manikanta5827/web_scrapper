@@ -8,6 +8,7 @@ import { handleUrls } from './handlers/urls';
 export function startServer() {
   const server = Bun.serve({
     port: process.env.PORT || 3003,
+    idleTimeout: 30, // Increase timeout to 30 seconds
     async fetch(req) {
       const url = new URL(req.url);
 

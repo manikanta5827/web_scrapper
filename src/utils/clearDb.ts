@@ -13,7 +13,7 @@ async function clear() {
     // This is much faster and cleaner than individual deletes
     await db.execute(sql`TRUNCATE TABLE ${urls} RESTART IDENTITY CASCADE`);
     await db.execute(sql`TRUNCATE TABLE ${sitemaps} RESTART IDENTITY CASCADE`);
-    await db.execute(sql`TRUNCATE TABLE ${healthChecks} RESTART IDENTITY CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE ${healthChecks} CASCADE`);
     
     logger.info('Database tables cleared successfully.');
   } catch (error) {

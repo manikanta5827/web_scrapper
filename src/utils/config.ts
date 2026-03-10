@@ -16,9 +16,9 @@ export const config = {
   // 4. Concurrency settings for the unified worker engine
   workerConcurrency: {
     min: 1,
-    max: 150,
-    scaleUpThreshold: 5, // total jobs per worker to trigger scale up
-    pollInterval: 5000,    // check every 5 seconds for fast response
+    max: 50,             // Reduced from 150 to prevent DB saturation
+    scaleUpThreshold: 20, // Increased from 5 to scale more conservatively
+    pollInterval: 5000,    // check every 5 seconds
   },
 
   // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
@@ -48,7 +48,6 @@ export const config = {
   },
 
   // Connection Pool Settings
-  // Limiting each pool to 5-10 connections prevents "too many clients" errors
   dbMaxConnections: 20,
   bossMaxConnections: 20,
 } as const;
