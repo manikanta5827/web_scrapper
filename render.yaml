@@ -40,7 +40,12 @@ envVarGroups:
   - name: web-scraper-secrets
     envVars:
       - key: DATABASE_URL
+        value: "replace-with-your-supabase-url"
       - key: AWS_ACCESS_KEY_ID
+        value: "replace-with-your-key"
       - key: AWS_SECRET_ACCESS_KEY
+        value: "replace-with-your-secret"
       - key: AWS_REGION
+        value: "ap-south-1"
       - key: AWS_BUCKET_NAME
+        value: "web-scraper-raw-html"
