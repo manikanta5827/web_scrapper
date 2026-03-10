@@ -7,10 +7,11 @@ async function clear() {
     await checkConnection();
     await initQueue();
 
-    logger.info('Clearing all jobs from "scrape_queue"...');
+    logger.info('Clearing all jobs from "sitemap_queue" and "page_queue"...');
     
     // This removes all jobs (queued, active, completed, failed) for this specific queue
-    await boss.deleteAllJobs('scrape_queue');
+    await boss.deleteAllJobs('sitemap_queue');
+    await boss.deleteAllJobs('page_queue');
     
     logger.info('Queue cleared successfully.');
   } catch (error) {
