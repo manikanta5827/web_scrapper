@@ -1,0 +1,1 @@
+ALTER TABLE "urls" ADD COLUMN "s3_url" text;
