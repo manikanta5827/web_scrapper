@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 import { parseStringPromise } from 'xml2js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { uploadToS3 } from '../utils/uploadS3';
+import { DynamicScaler } from '../utils/dynamicScaler';
 
 /**
  * Update the heartbeat for a service
@@ -43,8 +44,10 @@ export async function startSitemapWorker(): Promise<void> {
   setInterval(() => updateHeartbeat('sitemap-worker'), 30000);
   await updateHeartbeat('sitemap-worker');
 
-  await boss.work('sitemap_queue', {
-    localConcurrency: config.siteMapQueueConcurrency,
+  const scaler = new DynamicScaler({
+    queueName: 'sitemap_queue',
+    serviceName: 'sitemap-worker',
+    ...config.siteMapQueueConcurrency,
     batchSize: 1
   }, async (jobs: any[]) => {
     const job = jobs[0];
@@ -200,7 +203,8 @@ export async function startSitemapWorker(): Promise<void> {
     }
   });
 
-  logger.info('Sitemap worker initialized with concurrency: ' + config.siteMapQueueConcurrency);
+  await scaler.start();
+  logger.info('Sitemap worker initialized with dynamic scaling: ' + JSON.stringify(config.siteMapQueueConcurrency));
 }
 
 /**
@@ -211,8 +215,10 @@ export async function startPageWorker(): Promise<void> {
   setInterval(() => updateHeartbeat('page-worker'), 30000);
   await updateHeartbeat('page-worker');
 
-  await boss.work('page_queue', {
-    localConcurrency: config.pageQueueConcurrency,
+  const scaler = new DynamicScaler({
+    queueName: 'page_queue',
+    serviceName: 'page-worker',
+    ...config.pageQueueConcurrency,
     batchSize: 1
   }, async (jobs: any[]) => {
     const job = jobs[0];
@@ -271,5 +277,6 @@ export async function startPageWorker(): Promise<void> {
     }
   });
 
-  logger.info(`Page worker initialized with concurrency: ${config.pageQueueConcurrency}`);
+  await scaler.start();
+  logger.info(`Page worker initialized with dynamic scaling: ${JSON.stringify(config.pageQueueConcurrency)}`);
 }
