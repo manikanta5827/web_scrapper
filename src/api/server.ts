@@ -11,8 +11,8 @@ export function startServer() {
     async fetch(req) {
       const url = new URL(req.url);
 
-      // --- DASHBOARD HTML ---
-      if (req.method === 'GET' && url.pathname.startsWith('/dashboard/')) {
+      // --- DASHBOARD HTML (Index and Detail) ---
+      if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
         return handleDashboard(req, url);
       }
 

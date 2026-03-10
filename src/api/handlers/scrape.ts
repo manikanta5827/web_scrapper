@@ -18,6 +18,32 @@ export async function handleScrape(req: Request): Promise<Response> {
       });
     }
 
+    // URL Validation
+    try {
+      const parsedUrl = new URL(sitemapUrl);
+      if (parsedUrl.protocol !== 'https:') {
+        return new Response(JSON.stringify({ error: 'Only HTTPS sitemaps are allowed' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      
+      const isXml = parsedUrl.pathname.toLowerCase().endsWith('.xml') || 
+                   parsedUrl.pathname.toLowerCase().endsWith('.xml.gz');
+      
+      if (!isXml) {
+        return new Response(JSON.stringify({ error: 'URL must end with .xml or .xml.gz' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'Invalid URL format' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     logger.info(`POST /scrape: Received request for ${sitemapUrl}`);
     // add the sitemap to db and queue
     let [siteMap] = await db.insert(sitemaps).values({

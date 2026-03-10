@@ -9,6 +9,7 @@ export const sitemaps = pgTable('sitemaps', {
   lastMod: timestamp('last_mod'),
   totalUrlsFound: integer('total_urls_found').default(0),
   status: text('status', { enum: ['active', 'processing', 'failed'] }).default('active'),
+  failureReason: text('failure_reason'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -21,6 +22,7 @@ export const urls = pgTable('urls', {
   lastMod: timestamp('last_mod'),
   s3Url: text('s3_url'), // Link to raw HTML in S3
   status: text('status', { enum: ['queued', 'scraping', 'scraped', 'processing', 'done', 'failed'] }).default('queued'),
+  failureReason: text('failure_reason'),
   rawContent: text('raw_content'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   lastScrapedAt: timestamp('last_scraped_at'),

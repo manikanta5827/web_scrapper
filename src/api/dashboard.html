@@ -16,11 +16,16 @@
     .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block; text-transform: capitalize; }
     .status-done { background: #dcfce7; color: #166534; }
     .status-scraping { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+    .status-failed { background: #fee2e2; color: #991b1b; }
     a { color: #2563eb; text-decoration: none; font-weight: 500; }
     .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; }
     .page-btn { padding: 8px 16px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px; }
     .live-indicator { display: inline-block; width: 10px; height: 10px; background: #22c55e; border-radius: 50%; margin-right: 5px; animation: pulse 2s infinite; }
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    .btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    .btn:disabled { background: #94a3b8; }
+    input { padding: 10px; border: 1px solid #cbd5e1; border-radius: 4px; flex: 1; font-size: 14px; }
+    .error-text { font-size: 11px; color: #991b1b; font-style: italic; }
   </style>
 </head>
 <body>
@@ -28,11 +33,22 @@
     <h1>Real-time Dashboard</h1>
     <div><span class="live-indicator"></span><span style="color:#666">Live Connection Active</span></div>
   </div>
+
+  <div class="card" style="border: 1px solid #e2e8f0; background: #f8fafc;">
+    <h3 style="margin-top:0">Start New Scrape</h3>
+    <div style="display: flex; gap: 10px;">
+      <input type="text" id="sitemapUrl" placeholder="Enter sitemap URL (e.g., https://example.com/sitemap.xml)">
+      <button onclick="startScrape()" id="startBtn" class="btn">Start</button>
+    </div>
+    <div id="scrapeMsg" style="margin-top: 10px; font-weight: 500; display: none;"></div>
+  </div>
   
   <div id="stats" class="grid"></div>
 
   <div class="card">
-    <h2 style="margin-top:0">Successfully Scraped (Page <span id="pageNum">1</span>)</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 style="margin:0">Successfully Scraped <small style="font-weight:normal; color:#888;">(Root ID: {{rootId}}, Page <span id="pageNum">1</span>)</small></h2>
+    </div>
     <table id="urlTable">
       <thead>
         <tr><th>URL</th><th>Status</th><th>Last Scraped</th><th>Link</th></tr>
@@ -54,14 +70,49 @@
     let page = 0;
     const limit = 20;
 
+    async function startScrape() {
+      const urlInput = document.getElementById('sitemapUrl');
+      const msgDiv = document.getElementById('scrapeMsg');
+      const btn = document.getElementById('startBtn');
+      const sitemapUrl = urlInput.value.trim();
+      if (!sitemapUrl) return alert('Please enter a URL');
+
+      btn.disabled = true;
+      msgDiv.style.display = 'block';
+      msgDiv.style.color = '#64748b';
+      msgDiv.innerText = 'Starting scrape...';
+
+      try {
+        const res = await fetch('/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: sitemapUrl })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          msgDiv.style.color = '#166534';
+          msgDiv.innerHTML = `Success! Root ID: <strong>${data.rootId}</strong>. <a href="/dashboard/${data.rootId}" style="text-decoration:underline;">Go to new dashboard</a>`;
+          urlInput.value = '';
+        } else {
+          throw new Error(data.error || 'Failed to start');
+        }
+      } catch (err) {
+        msgDiv.style.color = '#991b1b';
+        msgDiv.innerText = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     async function fetchStats() {
       try {
-        // Parallel count queries for maximum speed
-        const [totalRes, doneRes, scrapingRes, queuedRes] = await Promise.all([
+        const [totalRes, doneRes, scrapingRes, queuedRes, failedRes] = await Promise.all([
           supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId),
           supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'done'),
           supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'scraping'),
-          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'queued')
+          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'queued'),
+          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'failed')
         ]);
 
         document.getElementById('stats').innerHTML = `
@@ -69,6 +120,7 @@
           <div class="stat"><h3>Done</h3><p>${doneRes.count || 0}</p></div>
           <div class="stat"><h3>Scraping</h3><p>${scrapingRes.count || 0}</p></div>
           <div class="stat"><h3>Queued</h3><p>${queuedRes.count || 0}</p></div>
+          <div class="stat"><h3>Failed</h3><p>${failedRes.count || 0}</p></div>
         `;
       } catch (err) {
         console.error('Stats Sync Error:', err);
@@ -80,7 +132,6 @@
         .from('urls')
         .select('*')
         .eq('root_id', rootId)
-        .eq('status', 'done')
         .order('updated_at', { ascending: false })
         .range(page * limit, (page + 1) * limit - 1);
 
@@ -91,7 +142,10 @@
 
       document.querySelector('#urlTable tbody').innerHTML = data.map(u => `
         <tr>
-          <td style="max-width:500px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><a href="${u.url}" target="_blank">${u.url}</a></td>
+          <td style="max-width:500px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            <a href="${u.url}" target="_blank">${u.url}</a>
+            ${u.status === 'failed' && u.failure_reason ? `<div class="error-text">${u.failure_reason}</div>` : ''}
+          </td>
           <td><span class="badge status-${u.status}">${u.status}</span></td>
           <td>${new Date(u.updated_at).toLocaleString()}</td>
           <td>${u.s3_url ? `<a href="${u.s3_url}" target="_blank">HTML</a>` : '-'}</td>
@@ -105,17 +159,14 @@
       fetchTable();
     }
 
-    // Subscribe to REALTIME changes
     supabaseClient
       .channel('db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'urls', filter: `root_id=eq.${rootId}` }, (payload) => {
-        console.log('Change received!', payload);
-        fetchStats(); // Update counters immediately
-        if (page === 0) fetchTable(); // Update first page live
+        fetchStats();
+        if (page === 0) fetchTable();
       })
       .subscribe();
 
-    // Initial load
     fetchStats();
     fetchTable();
   </script>

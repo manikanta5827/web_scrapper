@@ -63,7 +63,7 @@ export async function startSitemapWorker(): Promise<void> {
       });
 
       if (!res.data || typeof res.data !== 'string') {
-        await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.id, sitemapId));
+        await db.update(sitemaps).set({ status: 'failed', failureReason: 'Empty sitemap response' }).where(eq(sitemaps.id, sitemapId));
         return;
       }
 
@@ -74,7 +74,7 @@ export async function startSitemapWorker(): Promise<void> {
       });
 
       if (!result) {
-        await db.update(sitemaps).set({ status: 'failed' }).where(eq(sitemaps.id, sitemapId));
+        await db.update(sitemaps).set({ status: 'failed', failureReason: 'Failed to parse XML' }).where(eq(sitemaps.id, sitemapId));
         return;
       }
 
@@ -193,7 +193,9 @@ export async function startSitemapWorker(): Promise<void> {
         .where(eq(sitemaps.id, sitemapId));
 
     } catch (e) {
-      logger.error(`Error processing sitemap ${sitemapUrl}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      logger.error(`Error processing sitemap ${sitemapUrl}: ${msg}`);
+      await db.update(sitemaps).set({ status: 'failed', failureReason: msg }).where(eq(sitemaps.id, sitemapId));
       throw e;
     }
   });
@@ -234,7 +236,7 @@ export async function startPageWorker(): Promise<void> {
 
       if (res.status === 429) throw new Error('Rate limited (429)');
       if (res.status === 403 || res.status === 401) {
-        await db.update(urls).set({ status: 'failed' }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+        await db.update(urls).set({ status: 'failed', failureReason: `Auth error: ${res.status}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
         return;
       }
 
@@ -259,10 +261,12 @@ export async function startPageWorker(): Promise<void> {
         
         logger.info(`[Page Worker ${jobId}] Successfully scraped & archived: ${url}`);
       } else {
-        await db.update(urls).set({ status: 'failed' }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
+        await db.update(urls).set({ status: 'failed', failureReason: `Invalid content type: ${contentType}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
       }
     } catch (e) {
-      logger.error(`[Page Worker ${jobId}] Failed to scrape ${url}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      logger.error(`[Page Worker ${jobId}] Failed to scrape ${url}: ${msg}`);
+      await db.update(urls).set({ status: 'failed', failureReason: msg }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
       throw e;
     }
   });

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Scraper Home - All Scrapes</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: -apple-system, sans-serif; line-height: 1.6; color: #333; max-width: 1100px; margin: 0 auto; padding: 20px; background: #f8fafc; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 30px; border: 1px solid #e2e8f0; }
+    
+    .launch-form { display: flex; gap: 12px; margin-top: 15px; }
+    input { flex: 1; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; outline: none; transition: border-color 0.2s; }
+    input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+    .btn-primary { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+    .btn-primary:hover { background: #1d4ed8; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 16px; border-bottom: 1px solid #f1f5f9; }
+    th { background: #f8fafc; font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.025em; }
+    .scrape-link { color: #2563eb; text-decoration: none; font-weight: 600; font-size: 15px; }
+    .scrape-link:hover { text-decoration: underline; }
+    
+    .badge { padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .status-active { background: #dcfce7; color: #166534; }
+    .status-processing { background: #fef9c3; color: #854d0e; }
+    .status-failed { background: #fee2e2; color: #991b1b; }
+    
+    .timestamp { font-size: 13px; color: #94a3b8; }
+    .error-text { font-size: 12px; color: #991b1b; display: block; margin-top: 4px; font-style: italic; }
+    .empty-state { text-align: center; padding: 40px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 style="margin:0; font-size: 24px;">Scraper Management</h1>
+    <div style="font-size: 14px; color: #64748b;">Monitoring active crawls</div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0; font-size: 18px;">Launch New Sitemap Crawl</h3>
+    <div class="launch-form">
+      <input type="text" id="sitemapUrl" placeholder="Enter sitemap URL (e.g., https://example.com/sitemap.xml)">
+      <button onclick="startScrape()" id="startBtn" class="btn-primary">Start Scraper</button>
+    </div>
+    <div id="scrapeMsg" style="margin-top: 15px; font-weight: 500; display: none; padding: 12px; border-radius: 6px;"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0; font-size: 18px; margin-bottom: 20px;">Main Sitemaps (Root Entries)</h2>
+    <table id="scrapeTable">
+      <thead>
+        <tr>
+          <th>Sitemap URL</th>
+          <th>Created At</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="scrapeList">
+        <tr><td colspan="4" class="empty-state">Loading your scrapes...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const supabaseUrl = "{{supabaseUrl}}";
+    const supabaseKey = "{{supabaseAnonKey}}";
+    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+    async function startScrape() {
+      const urlInput = document.getElementById('sitemapUrl');
+      const msgDiv = document.getElementById('scrapeMsg');
+      const btn = document.getElementById('startBtn');
+      const sitemapUrl = urlInput.value.trim();
+      
+      if (!sitemapUrl) return;
+
+      btn.disabled = true;
+      msgDiv.style.display = 'block';
+      msgDiv.style.background = '#f1f5f9';
+      msgDiv.innerText = 'Starting scrape...';
+
+      try {
+        const res = await fetch('/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: sitemapUrl })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          msgDiv.style.background = '#dcfce7';
+          msgDiv.style.color = '#166534';
+          msgDiv.innerHTML = `Started successfully! <strong>ID: ${data.rootId}</strong>. <a href="/dashboard/${data.rootId}">View Dashboard</a>`;
+          fetchScrapes();
+          urlInput.value = '';
+        } else {
+          throw new Error(data.error);
+        }
+      } catch (err) {
+        msgDiv.style.background = '#fee2e2';
+        msgDiv.style.color = '#991b1b';
+        msgDiv.innerText = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function fetchScrapes() {
+      const { data, error } = await supabaseClient
+        .from('sitemaps')
+        .select('*')
+        .is('parent_id', null)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Fetch Error:', error);
+        return;
+      }
+
+      const list = document.getElementById('scrapeList');
+      if (data.length === 0) {
+        list.innerHTML = '<tr><td colspan="4" class="empty-state">No scrapes found. Start your first one above!</td></tr>';
+        return;
+      }
+
+      list.innerHTML = data.map(s => `
+        <tr>
+          <td>
+            <div style="max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              <a href="/dashboard/${s.id}" class="scrape-link" title="${s.sitemap_url}">${s.sitemap_url}</a>
+              ${s.status === 'failed' && s.failure_reason ? `<span class="error-text">Reason: ${s.failure_reason}</span>` : ''}
+            </div>
+          </td>
+          <td class="timestamp">${new Date(s.created_at).toLocaleString()}</td>
+          <td><span class="badge status-${s.status}">${s.status}</span></td>
+          <td>
+            <a href="/dashboard/${s.id}" class="btn-primary" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">View Detail</a>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    fetchScrapes();
+    setInterval(fetchScrapes, 15000);
+  </script>
+</body>
+</html>
