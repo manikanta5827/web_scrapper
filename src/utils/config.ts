@@ -13,17 +13,17 @@ export const config = {
   // 3. Maximum time (in milliseconds) to wait for a website to respond (10 seconds)
   timeout: 10000,
 
-  // 4. How many URLs to scrape at the exact same time within ONE worker process
-  concurrency: 10,
+  // 4. How many URLs to scrape for sitemaps at the exact same time within ONE worker process
+  siteMapQueueConcurrency: 10,
+
+  // How many individual page URLs to scrape at the exact same time within ONE worker process
+  pageQueueConcurrency: 5,
 
   // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
   retryLimit: 1,
 
   // 6. How many seconds to wait before trying a failed job again
   retryDelay: 5,
-
-  // 7. Politeness delay: How many milliseconds to wait BEFORE making each request (3 seconds)
-  requestDelay: 3000,
 
   // 8. The maximum number of text characters to save in the database per page (to save space)
   maxContentLength: 50000,
