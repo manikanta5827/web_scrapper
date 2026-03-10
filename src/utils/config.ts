@@ -37,6 +37,14 @@ export const config = {
   // 11. The filename where all system logs are stored
   logFile: 'app.log',
   
+  // 12. S3 Storage for raw HTML
+  s3: {
+    region: process.env.AWS_REGION || 'ap-south-1',
+    bucket: process.env.AWS_BUCKET_NAME || 'web-scraper-raw-html',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
+  },
+
   // Connection Pool Settings
   // Limiting each pool to 5-10 connections prevents "too many clients" errors
   dbMaxConnections: 10,
