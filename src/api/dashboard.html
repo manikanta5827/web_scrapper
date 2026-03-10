@@ -1,100 +1,123 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Scraper Dashboard - Root ID {{rootId}}</title>
+  <title>Real-time Scraper Dashboard - Root ID {{rootId}}</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { font-family: -apple-system, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f4f7f6; }
     .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px; }
     .stat { text-align: center; padding: 15px; background: #ebf1ff; border-radius: 6px; border: 1px solid #d0e0ff; }
-    .stat h3 { margin: 0; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat h3 { margin: 0; font-size: 14px; color: #666; text-transform: uppercase; }
     .stat p { margin: 5px 0 0; font-size: 28px; font-weight: bold; color: #2563eb; }
     table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; }
     th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eee; }
     th { background: #f8fafc; font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: 600; }
     .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; display: inline-block; text-transform: capitalize; }
     .status-done { background: #dcfce7; color: #166534; }
-    .status-scraping { background: #fef9c3; color: #854d0e; }
-    .status-queued { background: #f1f5f9; color: #475569; }
-    .status-failed { background: #fee2e2; color: #991b1b; }
+    .status-scraping { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
     a { color: #2563eb; text-decoration: none; font-weight: 500; }
-    a:hover { text-decoration: underline; }
-    .header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 30px; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
-    .refresh-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
-    .refresh-btn:hover { background: #1d4ed8; }
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; }
+    .page-btn { padding: 8px 16px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px; }
+    .live-indicator { display: inline-block; width: 10px; height: 10px; background: #22c55e; border-radius: 50%; margin-right: 5px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1 style="margin:0">Scraper Dashboard</h1>
-    <span style="color:#666; font-size: 1.2rem;">Root ID: <strong>{{rootId}}</strong></span>
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h1>Real-time Dashboard</h1>
+    <div><span class="live-indicator"></span><span style="color:#666">Live Connection Active</span></div>
   </div>
   
-  <div id="stats" class="grid">
-    <div class="stat"><h3>Loading...</h3><p>-</p></div>
-  </div>
+  <div id="stats" class="grid"></div>
 
   <div class="card">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-      <h2 style="margin:0">Recent URLs</h2>
-      <button onclick="loadData()" class="refresh-btn">Refresh Now</button>
-    </div>
+    <h2 style="margin-top:0">Successfully Scraped (Page <span id="pageNum">1</span>)</h2>
     <table id="urlTable">
       <thead>
-        <tr>
-          <th>URL</th>
-          <th>Status</th>
-          <th>Last Scraped</th>
-          <th>S3 Archive</th>
-        </tr>
+        <tr><th>URL</th><th>Status</th><th>Last Scraped</th><th>Link</th></tr>
       </thead>
-      <tbody>
-        <tr><td colspan="4" style="text-align:center; padding: 40px; color: #999;">Loading URLs...</td></tr>
-      </tbody>
+      <tbody></tbody>
     </table>
+    <div class="pagination">
+      <button onclick="changePage(-1)" class="page-btn">Previous</button>
+      <button onclick="changePage(1)" class="page-btn">Next</button>
+    </div>
   </div>
 
   <script>
     const rootId = "{{rootId}}";
-    
-    async function loadData() {
-      try {
-        // 1. Fetch Stats
-        const resStatus = await fetch('/status/' + rootId);
-        const statusData = await resStatus.json();
-        
-        let statsHtml = `<div class="stat"><h3>Total URLs</h3><p>${statusData.total}</p></div>`;
-        statusData.breakdown.forEach(b => {
-          statsHtml += `<div class="stat"><h3>${b.status}</h3><p>${b.count}</p></div>`;
-        });
-        document.getElementById('stats').innerHTML = statsHtml;
+    const supabaseUrl = "{{supabaseUrl}}";
+    const supabaseKey = "{{supabaseAnonKey}}";
+    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
-        // 2. Fetch URLs
-        const resUrls = await fetch('/api/urls/' + rootId);
-        const urls = await resUrls.json();
-        
-        const tableBody = urls.map(u => `
-          <tr>
-            <td style="max-width:500px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              <a href="${u.url}" target="_blank" title="${u.url}">${u.url}</a>
-            </td>
-            <td><span class="badge status-${u.status}">${u.status}</span></td>
-            <td>${u.lastScrapedAt ? new Date(u.lastScrapedAt).toLocaleString() : '-'}</td>
-            <td>
-              ${u.s3Url ? `<a href="${u.s3Url}" target="_blank">View HTML</a>` : '<span style="color:#ccc">N/A</span>'}
-            </td>
-          </tr>
-        `).join('');
-        
-        document.querySelector('#urlTable tbody').innerHTML = tableBody || '<tr><td colspan="4" style="text-align:center;">No URLs found for this ID.</td></tr>';
+    let page = 0;
+    const limit = 20;
+
+    async function fetchStats() {
+      try {
+        // Parallel count queries for maximum speed
+        const [totalRes, doneRes, scrapingRes, queuedRes] = await Promise.all([
+          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId),
+          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'done'),
+          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'scraping'),
+          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'queued')
+        ]);
+
+        document.getElementById('stats').innerHTML = `
+          <div class="stat"><h3>Total Found</h3><p>${totalRes.count || 0}</p></div>
+          <div class="stat"><h3>Done</h3><p>${doneRes.count || 0}</p></div>
+          <div class="stat"><h3>Scraping</h3><p>${scrapingRes.count || 0}</p></div>
+          <div class="stat"><h3>Queued</h3><p>${queuedRes.count || 0}</p></div>
+        `;
       } catch (err) {
-        console.error('Failed to refresh dashboard:', err);
+        console.error('Stats Sync Error:', err);
       }
     }
 
-    loadData();
-    // Auto-refresh every 15 seconds
-    setInterval(loadData, 15000);
+    async function fetchTable() {
+      const { data, error } = await supabaseClient
+        .from('urls')
+        .select('*')
+        .eq('root_id', rootId)
+        .eq('status', 'done')
+        .order('updated_at', { ascending: false })
+        .range(page * limit, (page + 1) * limit - 1);
+
+      if (error) {
+        console.error('Table Error:', error);
+        return;
+      }
+
+      document.querySelector('#urlTable tbody').innerHTML = data.map(u => `
+        <tr>
+          <td style="max-width:500px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"><a href="${u.url}" target="_blank">${u.url}</a></td>
+          <td><span class="badge status-${u.status}">${u.status}</span></td>
+          <td>${new Date(u.updated_at).toLocaleString()}</td>
+          <td>${u.s3_url ? `<a href="${u.s3_url}" target="_blank">HTML</a>` : '-'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function changePage(delta) {
+      page = Math.max(0, page + delta);
+      document.getElementById('pageNum').innerText = page + 1;
+      fetchTable();
+    }
+
+    // Subscribe to REALTIME changes
+    supabaseClient
+      .channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'urls', filter: `root_id=eq.${rootId}` }, (payload) => {
+        console.log('Change received!', payload);
+        fetchStats(); // Update counters immediately
+        if (page === 0) fetchTable(); // Update first page live
+      })
+      .subscribe();
+
+    // Initial load
+    fetchStats();
+    fetchTable();
   </script>
 </body>
 </html>
