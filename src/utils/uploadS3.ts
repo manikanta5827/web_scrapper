@@ -32,8 +32,8 @@ export async function uploadToS3(url: string, html: string): Promise<string | nu
       ContentType: 'text/html',
     }));
     
-    // Construct public or private URL depending on bucket policy
-    return `s3://${config.s3.bucket}/${key}`;
+    // Construct public HTTPS URL (assumes public read policy is set on bucket)
+    return `https://${config.s3.bucket}.s3.${config.s3.region}.amazonaws.com/${key}`;
   } catch (error) {
     logger.error(`S3 Upload failed for ${url}: ${error instanceof Error ? error.message : 'Unknown'}`);
     return null;
