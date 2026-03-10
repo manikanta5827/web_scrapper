@@ -1,7 +1,7 @@
 import { logger } from '../utils/logger';
 import { handleScrape } from './handlers/scrape';
 import { handleHealth } from './handlers/health';
-import { handleStatus } from './handlers/status';
+import { handleStatus, handleGlobalStatus } from './handlers/status';
 import { handleDashboard } from './handlers/dashboard';
 import { handleUrls } from './handlers/urls';
 
@@ -24,6 +24,11 @@ export function startServer() {
       // --- HEALTH ---
       if (req.method === 'GET' && url.pathname === '/health') {
         return handleHealth(req);
+      }
+
+      // --- GLOBAL STATUS ---
+      if (req.method === 'GET' && url.pathname === '/api/global-status') {
+        return handleGlobalStatus();
       }
 
       // --- STATUS ---
