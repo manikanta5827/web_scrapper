@@ -7,6 +7,7 @@
     "@types/bun": "latest",
     "@types/node": "^25.3.5",
     "@types/pg": "^8.18.0",
+    "@types/turndown": "^5.0.6",
     "@types/xml2js": "^0.4.14",
     "drizzle-kit": "^0.31.9"
   },
@@ -32,11 +33,12 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1005.0",
     "axios": "^1.13.6",
-    "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.1",
     "pg": "^8.20.0",
     "pg-boss": "^12.14.0",
+    "turndown": "^7.2.2",
     "winston": "^3.19.0",
     "xml2js": "^0.6.2"
   }
