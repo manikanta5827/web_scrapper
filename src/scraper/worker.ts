@@ -1,13 +1,23 @@
 import axios from 'axios';
 import { db } from '../db/client';
 import { sitemaps, urls } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { boss } from '../queue/boss';
 import { config } from '../utils/config';
 import { extract } from './extractor';
 import { logger } from '../utils/logger';
 import { parseStringPromise } from 'xml2js';
 import { setTimeout as sleep } from 'node:timers/promises';
+
+/**
+ * Helper to parse date safely
+ */
+function parseDate(dateStr: any): Date | null {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 /**
  * Worker for processing XML sitemaps and indices.
  */
@@ -56,9 +66,24 @@ export async function startSitemapWorker(): Promise<void> {
 
         for (const entry of entries) {
           if (!entry.loc) continue;
+          const lastMod = parseDate(entry.lastmod);
+
           const [newSitemap] = await db.insert(sitemaps)
-            .values({ parentId: sitemapId, sitemapUrl: entry.loc, status: 'processing' })
-            .onConflictDoUpdate({ target: sitemaps.sitemapUrl, set: { updatedAt: new Date() } })
+            .values({ 
+              parentId: sitemapId, 
+              sitemapUrl: entry.loc, 
+              status: 'processing',
+              lastMod: lastMod
+            })
+            .onConflictDoUpdate({ 
+              target: sitemaps.sitemapUrl, 
+              set: { 
+                lastMod: sql`excluded.last_mod`,
+                updatedAt: new Date(),
+                status: 'processing'
+              },
+              where: sql`excluded.last_mod IS NOT NULL AND (${sitemaps.lastMod} IS NULL OR ${sitemaps.lastMod} < excluded.last_mod)`
+            })
             .returning();
 
           if (newSitemap) {
@@ -74,12 +99,26 @@ export async function startSitemapWorker(): Promise<void> {
           if (!entry.loc || typeof entry.loc !== 'string') continue;
           const baseUrl = entry.loc.split('?')[0] ?? '';
           const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
+          const lastMod = parseDate(entry.lastmod);
 
           // handle sitemap
           if (isSitemap) {
             const [newSitemap] = await db.insert(sitemaps)
-              .values({ parentId: sitemapId, sitemapUrl: entry.loc, status: 'processing' })
-              .onConflictDoUpdate({ target: sitemaps.sitemapUrl, set: { updatedAt: new Date() } })
+              .values({ 
+                parentId: sitemapId, 
+                sitemapUrl: entry.loc, 
+                status: 'processing',
+                lastMod: lastMod
+              })
+              .onConflictDoUpdate({ 
+                target: sitemaps.sitemapUrl, 
+                set: { 
+                  lastMod: sql`excluded.last_mod`,
+                  updatedAt: new Date(),
+                  status: 'processing'
+                },
+                where: sql`excluded.last_mod IS NOT NULL AND (${sitemaps.lastMod} IS NULL OR ${sitemaps.lastMod} < excluded.last_mod)`
+              })
               .returning();
             if (newSitemap) {
               await boss.send('sitemap_queue', { sitemapUrl: entry.loc, sitemapId: newSitemap.id, depth: depth + 1 });
@@ -87,8 +126,21 @@ export async function startSitemapWorker(): Promise<void> {
             // handle url
           } else {
             const [newUrl] = await db.insert(urls)
-              .values({ sitemapId: sitemapId, url: entry.loc, status: 'queued' })
-              .onConflictDoNothing()
+              .values({ 
+                sitemapId: sitemapId, 
+                url: entry.loc, 
+                status: 'queued',
+                lastMod: lastMod
+              })
+              .onConflictDoUpdate({
+                target: urls.url,
+                set: { 
+                  status: 'queued', 
+                  lastMod: sql`excluded.last_mod`, 
+                  updatedAt: new Date() 
+                },
+                where: sql`excluded.last_mod IS NOT NULL AND (${urls.lastMod} IS NULL OR ${urls.lastMod} < excluded.last_mod)`
+              })
               .returning();
             if (newUrl) {
               await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId });

@@ -6,6 +6,7 @@ export const sitemaps = pgTable('sitemaps', {
   parentId: integer('parent_id'), // Reference to the parent sitemap if nested
   sitemapUrl: text('sitemap_url').notNull().unique(),
   lastCheckedAt: timestamp('last_checked_at'),
+  lastMod: timestamp('last_mod'),
   totalUrlsFound: integer('total_urls_found').default(0),
   status: text('status', { enum: ['active', 'processing', 'failed'] }).default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -16,6 +17,7 @@ export const urls = pgTable('urls', {
   id: serial('id').primaryKey(),
   sitemapId: integer('sitemap_id').references(() => sitemaps.id).notNull(),
   url: text('url').notNull().unique(),
+  lastMod: timestamp('last_mod'),
   status: text('status', { enum: ['queued', 'scraping', 'scraped', 'processing', 'done', 'failed'] }).default('queued'),
   retryCount: integer('retry_count').default(0),
   rawContent: text('raw_content'),
