@@ -14,8 +14,13 @@ export const logger = winston.createLogger({
     logFormat
   ),
   transports: [
-    // Write all logs to a file
-    new winston.transports.File({ filename: config.logFile }),
+    new winston.transports.Console({
+      format: combine(
+        colorize(),
+        timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        logFormat
+      ),
+    }),
   ],
 });
 
