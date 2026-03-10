@@ -1,65 +1,46 @@
+# Render Blueprint for Web Scraper
 services:
   # 1. The API Server (Web Service)
   - type: web
     name: web-scraper-api
-    runtime: docker # Using Docker is more reliable for Bun on Render
-    plan: free # Change to starter if you need more RAM
-    buildCommand: bun install && bun run db:push
-    startCommand: bun run start:server
+    runtime: docker
+    plan: free
+    dockerCommand: bun run db:push && bun run start:server
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3003
-      - key: DATABASE_URL
-        fromProject: true # You will define this once in the Render Dashboard
-      - key: AWS_ACCESS_KEY_ID
-        fromProject: true
-      - key: AWS_SECRET_ACCESS_KEY
-        fromProject: true
-      - key: AWS_REGION
-        fromProject: true
-      - key: AWS_BUCKET_NAME
-        fromProject: true
+      - fromGroup: web-scraper-secrets
 
   # 2. The Sitemap Worker (Background Worker)
   - type: worker
     name: web-scraper-sitemap-worker
     runtime: docker
     plan: free
-    buildCommand: bun install
-    startCommand: bun run start:worker:sitemap
+    dockerCommand: bun run start:worker:sitemap
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATABASE_URL
-        fromProject: true
-      - key: AWS_ACCESS_KEY_ID
-        fromProject: true
-      - key: AWS_SECRET_ACCESS_KEY
-        fromProject: true
-      - key: AWS_REGION
-        fromProject: true
-      - key: AWS_BUCKET_NAME
-        fromProject: true
+      - fromGroup: web-scraper-secrets
 
   # 3. The Page Worker (Background Worker)
   - type: worker
     name: web-scraper-page-worker
     runtime: docker
     plan: free
-    buildCommand: bun install
-    startCommand: bun run start:worker:page
+    dockerCommand: bun run start:worker:page
     envVars:
       - key: NODE_ENV
         value: production
+      - fromGroup: web-scraper-secrets
+
+# Environment Group to share secrets across all services
+envVarGroups:
+  - name: web-scraper-secrets
+    envVars:
       - key: DATABASE_URL
-        fromProject: true
       - key: AWS_ACCESS_KEY_ID
-        fromProject: true
       - key: AWS_SECRET_ACCESS_KEY
-        fromProject: true
       - key: AWS_REGION
-        fromProject: true
       - key: AWS_BUCKET_NAME
-        fromProject: true
