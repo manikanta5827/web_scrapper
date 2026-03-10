@@ -2,7 +2,6 @@ import { boss } from '../queue/boss';
 import { logger } from './logger';
 import { db } from '../db/client';
 import { healthChecks } from '../db/schema';
-import { sql } from 'drizzle-orm';
 
 export interface ScalerOptions {
   queueName: string;
