@@ -4,6 +4,7 @@ import { handleHealth } from './handlers/health';
 import { handleStatus, handleGlobalStatus } from './handlers/status';
 import { handleDashboard } from './handlers/dashboard';
 import { handleUrls } from './handlers/urls';
+import { handleLogs } from './handlers/logs';
 
 export function startServer() {
   const server = Bun.serve({
@@ -15,6 +16,16 @@ export function startServer() {
       // --- DASHBOARD HTML (Index and Detail) ---
       if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
         return handleDashboard(req, url);
+      }
+
+      // --- LOGS DASHBOARD ---
+      if (req.method === 'GET' && url.pathname === '/logs') {
+        try {
+          const html = await Bun.file('src/api/logs.html').text();
+          return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+        } catch (e) {
+          return new Response('Log dashboard template not found', { status: 404 });
+        }
       }
 
       // --- API: URL LIST ---
@@ -30,6 +41,11 @@ export function startServer() {
       // --- GLOBAL STATUS ---
       if (req.method === 'GET' && url.pathname === '/api/global-status') {
         return handleGlobalStatus();
+      }
+
+      // --- API: LOGS ---
+      if (req.method === 'GET' && url.pathname === '/api/logs') {
+        return handleLogs();
       }
 
       // --- STATUS ---

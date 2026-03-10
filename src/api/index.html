@@ -42,7 +42,10 @@
   </div>
 
   <div class="card">
-    <h3 style="margin-top:0; font-size: 18px;">Launch New Sitemap Crawl</h3>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="margin:0; font-size: 18px;">Launch New Sitemap Crawl</h3>
+      <a href="/logs" class="scrape-link" style="font-size: 14px;">View System Logs →</a>
+    </div>
     <div class="launch-form">
       <input type="text" id="sitemapUrl" placeholder="Enter sitemap URL (e.g., https://example.com/sitemap.xml)">
       <button onclick="startScrape()" id="startBtn" class="btn-primary">Start Scraper</button>

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>System Logs - Scraper</title>
+  <style>
+    body { font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace; line-height: 1.4; color: #e2e8f0; background: #0f172a; max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #1e293b; padding-bottom: 15px; }
+    .btn-back { display: inline-flex; align-items: center; gap: 8px; color: #94a3b8; text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    .btn-back:hover { color: #38bdf8; }
+    .log-container { background: #1e293b; border-radius: 8px; padding: 15px; overflow-x: auto; font-size: 13px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
+    .log-line { border-bottom: 1px solid #334155; padding: 4px 0; white-space: pre-wrap; word-break: break-all; }
+    .log-line:last-child { border-bottom: none; }
+    .level-info { color: #38bdf8; }
+    .level-warn { color: #fbbf24; }
+    .level-error { color: #f87171; font-weight: bold; }
+    .level-debug { color: #94a3b8; }
+    .timestamp { color: #64748b; margin-right: 10px; }
+    .refresh-badge { background: #0ea5e9; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <a href="/dashboard" class="btn-back">← Back to Dashboard</a>
+      <h1 style="margin: 10px 0 0 0; color: #f1f5f9; font-size: 20px;">Real-time System Logs <span class="refresh-badge" id="refreshCounter">Refreshing in 5s</span></h1>
+    </div>
+    <div style="text-align: right;">
+      <div style="font-size: 12px; color: #94a3b8;">Showing last 100 lines (Newest first)</div>
+    </div>
+  </div>
+
+  <div id="logContainer" class="log-container">
+    <div class="log-line">Loading logs...</div>
+  </div>
+
+  <script>
+    let secondsLeft = 5;
+    const refreshInterval = 5;
+
+    async function fetchLogs() {
+      try {
+        const res = await fetch('/api/logs');
+        const data = await res.json();
+        const container = document.getElementById('logContainer');
+        
+        if (data.logs && data.logs.length > 0) {
+          container.innerHTML = data.logs.map(line => {
+            // Basic level coloring
+            let levelClass = '';
+            if (line.includes('[info]')) levelClass = 'level-info';
+            else if (line.includes('[warn]')) levelClass = 'level-warn';
+            else if (line.includes('[error]')) levelClass = 'level-error';
+            else if (line.includes('[debug]')) levelClass = 'level-debug';
+
+            // Split timestamp and message if possible
+            const parts = line.split(' ');
+            if (parts.length >= 3) {
+              const ts = parts[0] + ' ' + parts[1];
+              const rest = line.substring(ts.length);
+              return `<div class="log-line"><span class="timestamp">${ts}</span><span class="${levelClass}">${rest}</span></div>`;
+            }
+            
+            return `<div class="log-line ${levelClass}">${line}</div>`;
+          }).join('');
+        } else {
+          container.innerHTML = '<div class="log-line">No logs found.</div>';
+        }
+      } catch (err) {
+        console.error('Failed to fetch logs:', err);
+      }
+    }
+
+    function updateCounter() {
+      secondsLeft--;
+      if (secondsLeft <= 0) {
+        secondsLeft = refreshInterval;
+        fetchLogs();
+      }
+      document.getElementById('refreshCounter').innerText = `Refreshing in ${secondsLeft}s`;
+    }
+
+    // Initial load
+    fetchLogs();
+    // Auto refresh every second for the counter
+    setInterval(updateCounter, 1000);
+  </script>
+</body>
+</html>
