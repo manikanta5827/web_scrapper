@@ -17,7 +17,7 @@ export async function checkConnection(): Promise<void> {
     try {
       const client = await pool.connect();
       client.release();
-      logger.info('Connected to local database');
+      logger.info('Successfully connected to database');
       return;
     } catch (err) {
       retries--;
