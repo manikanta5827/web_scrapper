@@ -2,10 +2,9 @@ import { PgBoss } from 'pg-boss';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 
-// pg-boss can take constructor options instead of just a string
 export const boss = new PgBoss({
   connectionString: config.databaseUrl,
-  max: config.bossMaxConnections, // Explicitly limit the pool size for pg-boss
+  max: config.bossMaxConnections,
 });
 
 boss.on('error', (e: Error) => logger.error(`pg-boss: ${e.message}`));
@@ -13,13 +12,14 @@ boss.on('error', (e: Error) => logger.error(`pg-boss: ${e.message}`));
 export async function initQueue(): Promise<void> {
   await boss.start();
   
-  // Explicitly create the scraper queue
-  await boss.createQueue('scraper_queue');
+  // Create specialized queues
+  await boss.createQueue('sitemap_queue');
+  await boss.createQueue('page_queue');
   
-  logger.info('pg-boss queue started and "scraper_queue" verified');
+  logger.info('pg-boss queues started: "sitemap_queue" and "page_queue" verified');
 }
 
 export async function stopQueue(): Promise<void> {
   await boss.stop();
-  logger.info('pg-boss queue stopped');
+  logger.info('pg-boss queues stopped');
 }

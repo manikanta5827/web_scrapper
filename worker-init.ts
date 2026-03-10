@@ -1,15 +1,28 @@
 import { checkConnection, closeDb } from './src/db/client';
 import { initQueue, stopQueue } from './src/queue/boss';
-import { startWorker } from './src/scraper/worker';
+import { startSitemapWorker, startPageWorker } from './src/scraper/worker';
 import { logger } from './src/utils/logger';
 
 async function main(): Promise<void> {
-  logger.info('--- UNIFIED SCRAPER WORKER STARTING ---');
+  const type = process.argv[2]; // 'sitemap' or 'page'
+
+  if (!type || (type !== 'sitemap' && type !== 'page')) {
+    console.error('Usage: bun worker-init.ts <sitemap|page>');
+    process.exit(1);
+  }
+
+  logger.info(`--- ${type.toUpperCase()} WORKER STARTING ---`);
   try {
     await checkConnection();
     await initQueue();
-    await startWorker();
-    logger.info('Unified scraper worker is active');
+    
+    if (type === 'sitemap') {
+      await startSitemapWorker();
+    } else {
+      await startPageWorker();
+    }
+    
+    logger.info(`${type.charAt(0).toUpperCase() + type.slice(1)} worker is active`);
   } catch (error) {
     logger.error(`Worker failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     await shutdown();

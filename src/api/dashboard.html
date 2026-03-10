@@ -41,7 +41,8 @@
       <h1 style="margin:0">Scraper Dashboard</h1>
     </div>
     <div class="worker-status">
-      <div><span class="worker-dot"></span>Worker Engine: <strong id="unifiedWorkers">0</strong></div>
+      <div><span class="worker-dot"></span>Sitemap: <strong id="sitemapWorkers">0</strong></div>
+      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot"></span>Page: <strong id="pageWorkers">0</strong></div>
       <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;">
         <span style="color: #64748b;">System RAM:</span> <strong id="systemRam">0 GB</strong>
         <span style="color: #64748b; margin-left: 10px;">Free:</span> <strong id="freeRam">0 GB</strong>
@@ -115,7 +116,8 @@
         const data = await res.json();
         
         // Update Workers
-        document.getElementById('unifiedWorkers').innerText = data.workers.unified;
+        document.getElementById('sitemapWorkers').innerText = data.workers.sitemap;
+        document.getElementById('pageWorkers').innerText = data.workers.page;
         
         // Update Memory
         if (data.system) {

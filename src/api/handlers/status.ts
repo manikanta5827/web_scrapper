@@ -21,7 +21,8 @@ export async function handleGlobalStatus(): Promise<Response> {
       return record ? record.concurrency : 0;
     };
 
-    const unifiedWorker = getStat('unified-worker');
+    const sitemapWorker = getStat('sitemap-worker');
+    const pageWorker = getStat('page-worker');
 
     // System Memory Stats
     const totalMem = os.totalmem();
@@ -36,7 +37,8 @@ export async function handleGlobalStatus(): Promise<Response> {
     
     return new Response(JSON.stringify({
       workers: {
-        unified: unifiedWorker
+        sitemap: sitemapWorker,
+        page: pageWorker
       },
       system: {
         totalMemory: totalMem,

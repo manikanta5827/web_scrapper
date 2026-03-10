@@ -2,7 +2,7 @@
 # Exit on any error
 set -e
 
-echo "Starting All-in-One Service..."
+echo "Starting Scraper Multi-Process Service..."
 
 # 1. Validate DATABASE_URL isn't a placeholder
 if [[ "$DATABASE_URL" == *"replace-with-your-supabase-url"* ]]; then
@@ -12,15 +12,17 @@ fi
 
 # 2. Run database migrations/sync
 echo "Running database sync..."
-# We use || true here if we want the app to start even if sync fails, 
-# but for the first run, it MUST succeed.
 bun run db:push
 
-# 3. Start the Unified Worker in the background
-echo "Starting Unified Worker..."
-bun run start:worker &
+# 3. Start the Sitemap Worker in the background
+echo "Starting Sitemap Worker..."
+bun run start:worker:sitemap &
 
-# 4. Start the API Server in the foreground
+# 4. Start the Page Worker in the background
+echo "Starting Page Worker..."
+bun run start:worker:page &
+
+# 5. Start the API Server in the foreground
 # (This must be the last command so the container stays alive)
 echo "Starting API Server on port $PORT..."
 bun run start:server
