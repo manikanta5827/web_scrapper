@@ -2,6 +2,9 @@
 
 High-performance, async sitemap and page content scraper built with Bun, TypeScript, and PostgreSQL.
 
+![Web Management Console](screenshots/console_ss.png)
+*The web management console provides real-time visibility into worker concurrency and crawl progress.*
+
 ### Core Features
 
 #### Async & Non-Blocking Architecture
