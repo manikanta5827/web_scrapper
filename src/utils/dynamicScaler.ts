@@ -94,13 +94,12 @@ export class DynamicScaler {
     const { queueName, max, min, scaleUpThreshold } = this.options;
     
     try {
-      // getQueue returns current status including counts
-      const queueStats = await boss.getQueue(queueName);
-      const queueSize = queueStats?.queuedCount || 0;
+      // getQueueStats returns detailed information about the queue, including queuedCount
+      const stats = await boss.getQueueStats(queueName);
+      const queueSize = stats.queuedCount;
       
       // Calculate target concurrency: 
-      // If we have 50 jobs and scaleUpThreshold is 10, we want 5 workers.
-      // We always stay within [min, max].
+      // If we have 100 jobs and scaleUpThreshold is 50, we want 2 workers.
       let targetConcurrency = Math.ceil(queueSize / scaleUpThreshold);
       targetConcurrency = Math.max(min, Math.min(max, targetConcurrency));
 
@@ -131,6 +130,9 @@ export class DynamicScaler {
             this.currentConcurrency--;
           }
         }
+        await this.updateGlobalCount();
+      } else {
+        // Just update heartbeat to keep lastSeen fresh
         await this.updateGlobalCount();
       }
     } catch (err) {

@@ -12,22 +12,6 @@ import { uploadToS3 } from '../utils/uploadS3';
 import { DynamicScaler } from '../utils/dynamicScaler';
 
 /**
- * Update the heartbeat for a service
- */
-async function updateHeartbeat(serviceName: string, concurrency: number = 0) {
-  try {
-    await db.insert(healthChecks)
-      .values({ serviceName, lastSeen: new Date(), concurrency })
-      .onConflictDoUpdate({
-        target: healthChecks.serviceName,
-        set: { lastSeen: new Date(), concurrency }
-      });
-  } catch (err) {
-    logger.error(`Failed to update heartbeat for ${serviceName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-  }
-}
-
-/**
  * Helper to parse date safely
  */
 function parseDate(dateStr: any): Date | null {
@@ -253,10 +237,6 @@ async function processPage(data: any, jobId: string): Promise<void> {
  */
 export async function startWorker(): Promise<void> {
   const serviceName = 'unified-worker';
-
-  // Start heartbeat interval
-  setInterval(() => updateHeartbeat(serviceName), 30000);
-  await updateHeartbeat(serviceName);
 
   // object created by DynamicScaler to manage worker concurrency based on queue length
   const scaler = new DynamicScaler({

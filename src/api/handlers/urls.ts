@@ -37,7 +37,7 @@ export async function handleUrls(req: Request, url: URL): Promise<Response> {
       total: totalResult?.total,
       page,
       limit,
-      totalPages: Math.ceil(totalResult?.total || 0 / limit)
+      totalPages: Math.ceil((totalResult?.total || 0) / limit)
     }
   }), {
     headers: { 'Content-Type': 'application/json' },
