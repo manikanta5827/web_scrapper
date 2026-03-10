@@ -4,6 +4,7 @@ import { sitemaps, urls as urlsTable, healthChecks } from '../db/schema';
 import { config } from '../utils/config';
 import { boss } from '../queue/boss';
 import { eq, count } from 'drizzle-orm';
+import os from 'os';
 
 export function startServer() {
   const server = Bun.serve({
@@ -17,6 +18,11 @@ export function startServer() {
           const heartbeats = await db.select().from(healthChecks);
           const now = new Date().getTime();
           
+          // Memory calculations (in MB)
+          const totalMem = os.totalmem() / (1024 * 1024);
+          const freeMem = os.freemem() / (1024 * 1024);
+          const processMem = process.memoryUsage().rss / (1024 * 1024);
+
           const status = {
             api: 'up',
             database: 'connected',
@@ -25,8 +31,13 @@ export function startServer() {
               status: (now - h.lastSeen.getTime()) < 60000 ? 'healthy' : 'down',
               lastSeen: h.lastSeen
             })),
-            uptime: process.uptime(),
-            memory: process.memoryUsage(),
+            system: {
+              uptime: Math.floor(process.uptime()) + 's',
+              totalMemory: Math.round(totalMem) + ' MB',
+              freeMemory: Math.round(freeMem) + ' MB',
+              processUsedMemory: Math.round(processMem) + ' MB',
+              memoryUsagePercent: Math.round((processMem / totalMem) * 100) + '%'
+            }
           };
 
           return new Response(JSON.stringify(status), {
