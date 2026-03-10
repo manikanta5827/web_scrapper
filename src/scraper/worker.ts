@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { db } from '../db/client';
-import { sitemaps, urls } from '../db/schema';
+import { sitemaps, urls, healthChecks } from '../db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { boss } from '../queue/boss';
 import { config } from '../utils/config';
@@ -9,6 +9,22 @@ import { logger } from '../utils/logger';
 import { parseStringPromise } from 'xml2js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { uploadToS3 } from '../utils/uploadS3';
+
+/**
+ * Update the heartbeat for a service
+ */
+async function updateHeartbeat(serviceName: string) {
+  try {
+    await db.insert(healthChecks)
+      .values({ serviceName, lastSeen: new Date() })
+      .onConflictDoUpdate({
+        target: healthChecks.serviceName,
+        set: { lastSeen: new Date() }
+      });
+  } catch (err) {
+    logger.error(`Failed to update heartbeat for ${serviceName}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+  }
+}
 
 /**
  * Helper to parse date safely
@@ -23,6 +39,10 @@ function parseDate(dateStr: any): Date | null {
  * Worker for processing XML sitemaps and indices.
  */
 export async function startSitemapWorker(): Promise<void> {
+  // Start heartbeat interval
+  setInterval(() => updateHeartbeat('sitemap-worker'), 30000);
+  await updateHeartbeat('sitemap-worker');
+
   await boss.work('sitemap_queue', {
     localConcurrency: config.siteMapQueueConcurrency,
     batchSize: 1
@@ -185,6 +205,10 @@ export async function startSitemapWorker(): Promise<void> {
  * Worker for scraping individual HTML pages.
  */
 export async function startPageWorker(): Promise<void> {
+  // Start heartbeat interval
+  setInterval(() => updateHeartbeat('page-worker'), 30000);
+  await updateHeartbeat('page-worker');
+
   await boss.work('page_queue', {
     localConcurrency: config.pageQueueConcurrency,
     batchSize: 1

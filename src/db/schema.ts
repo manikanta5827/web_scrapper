@@ -27,6 +27,11 @@ export const urls = pgTable('urls', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const healthChecks = pgTable('health_checks', {
+  serviceName: text('service_name').primaryKey(), // 'sitemap-worker', 'page-worker'
+  lastSeen: timestamp('last_seen').defaultNow().notNull(),
+});
+
 export type Sitemap = InferSelectModel<typeof sitemaps>;
 export type NewSitemap = InferInsertModel<typeof sitemaps>;
 export type Url = InferSelectModel<typeof urls>;

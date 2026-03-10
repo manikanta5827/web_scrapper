@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 import { db } from '../db/client';
-import { sitemaps, urls as urlsTable } from '../db/schema';
+import { sitemaps, urls as urlsTable, healthChecks } from '../db/schema';
 import { config } from '../utils/config';
 import { boss } from '../queue/boss';
 import { eq, count } from 'drizzle-orm';
@@ -10,6 +10,36 @@ export function startServer() {
     port: process.env.PORT || 3003,
     async fetch(req) {
       const url = new URL(req.url);
+
+      // Handle GET /health
+      if (req.method === 'GET' && url.pathname === '/health') {
+        try {
+          const heartbeats = await db.select().from(healthChecks);
+          const now = new Date().getTime();
+          
+          const status = {
+            api: 'up',
+            database: 'connected',
+            workers: heartbeats.map(h => ({
+              name: h.serviceName,
+              status: (now - h.lastSeen.getTime()) < 60000 ? 'healthy' : 'down',
+              lastSeen: h.lastSeen
+            })),
+            uptime: process.uptime(),
+            memory: process.memoryUsage(),
+          };
+
+          return new Response(JSON.stringify(status), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ status: 'unhealthy', error: e instanceof Error ? e.message : 'Unknown error' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
 
       // Handle GET /status/:rootId
       if (req.method === 'GET' && url.pathname.startsWith('/status/')) {

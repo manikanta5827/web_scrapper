@@ -6,6 +6,25 @@ Direct interaction with the scraping system.
 
 ---
 
+### GET `/health`
+Check the status of the API server and background workers.
+
+- **Response (200):**
+  ```json
+  {
+    "api": "up",
+    "database": "connected",
+    "workers": [
+      { "name": "sitemap-worker", "status": "healthy", "lastSeen": "2024-03-20T10:00:00Z" },
+      { "name": "page-worker", "status": "healthy", "lastSeen": "2024-03-20T10:00:05Z" }
+    ],
+    "uptime": 3600,
+    "memory": { "rss": 123456, ... }
+  }
+  ```
+
+---
+
 ### POST `/scrape`
 Submit a sitemap to begin the recursive scraping process.
 
