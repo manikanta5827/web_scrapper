@@ -8,6 +8,7 @@ import { extract } from './extractor';
 import { logger } from '../utils/logger';
 import { parseStringPromise } from 'xml2js';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { uploadToS3 } from '../utils/uploadS3';
 
 /**
  * Helper to parse date safely
@@ -163,7 +164,7 @@ export async function startSitemapWorker(): Promise<void> {
       }
 
       await db.update(sitemaps)
-        .set({ status: 'active', totalUrlsFound: totalItems, lastCheckedAt: new Date(), updatedAt: new Date() })
+        .set({ status: 'active', totalUrlsFound: totalItems, updatedAt: new Date() })
         .where(eq(sitemaps.id, sitemapId));
 
     } catch (e) {
@@ -210,15 +211,24 @@ export async function startPageWorker(): Promise<void> {
 
       const contentType = res.headers['content-type'];
       if (contentType?.includes('text/html')) {
+        // 1. Upload raw HTML to S3 for archival
+        const s3Url = await uploadToS3(url, res.data);
+
+        // 2. Extract clean Markdown from HTML
+        const cleanContent = extract(res.data);
+
+        // 3. Update DB with S3 link and clean Markdown
         await db.update(urls)
           .set({
-            rawContent: extract(res.data),
+            s3Url: s3Url,
+            rawContent: cleanContent,
             status: 'done',
             lastScrapedAt: new Date(),
             updatedAt: new Date(),
           })
           .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
-        logger.info(`[Page Worker ${jobId}] Successfully scraped: ${url}`);
+        
+        logger.info(`[Page Worker ${jobId}] Successfully scraped & archived: ${url}`);
       } else {
         await db.update(urls).set({ status: 'failed' }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
       }
