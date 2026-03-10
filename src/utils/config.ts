@@ -16,7 +16,7 @@ export const config = {
   // 4. Concurrency settings for the unified worker engine
   workerConcurrency: {
     min: 1,
-    max: 200,
+    max: 150,
     scaleUpThreshold: 50, // total jobs per worker to trigger scale up
     pollInterval: 5000,    // check every 5 seconds for fast response
   },
