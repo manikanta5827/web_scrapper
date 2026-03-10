@@ -17,7 +17,7 @@ export const config = {
   siteMapQueueConcurrency: 10,
 
   // How many individual page URLs to scrape at the exact same time within ONE worker process
-  pageQueueConcurrency: 5,
+  pageQueueConcurrency: 10,
 
   // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
   retryLimit: 1,

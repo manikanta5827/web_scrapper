@@ -89,6 +89,8 @@ export async function startSitemapWorker(): Promise<void> {
             .returning();
 
           if (newSitemap) {
+            logger.info(`Discovered new sitemap: ${entry.loc} (lastmod: ${lastMod})`);
+
             await boss.send('sitemap_queue', { 
               sitemapUrl: entry.loc, 
               sitemapId: newSitemap.id, 
@@ -129,6 +131,8 @@ export async function startSitemapWorker(): Promise<void> {
               })
               .returning();
             if (newSitemap) {
+              logger.info(`Discovered nested sitemap: ${entry.loc} (lastmod: ${lastMod})`);
+            
               await boss.send('sitemap_queue', { 
                 sitemapUrl: entry.loc, 
                 sitemapId: newSitemap.id, 
@@ -157,6 +161,7 @@ export async function startSitemapWorker(): Promise<void> {
               })
               .returning();
             if (newUrl) {
+              logger.info(`Queued URL for scraping: ${entry.loc} (lastmod: ${lastMod})`);
               await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId, rootId: rootId });
             }
           }
