@@ -134,27 +134,29 @@
     async function fetchStats() {
       try {
         // Parallel count queries for accuracy
-        const [totalRes, doneRes, failedRes, activeRes] = await Promise.all([
+        const [totalRes, doneRes, failedRes, activeRes, sitemapsRes] = await Promise.all([
           supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId),
           supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'done'),
           supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'failed'),
-          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'scraping')
+          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'scraping'),
+          supabaseClient.from('sitemaps').select('*', { count: 'exact', head: true }).eq('root_id', rootId)
         ]);
 
         const total = totalRes.count || 0;
         const done = doneRes.count || 0;
         const failed = failedRes.count || 0;
         const scraping = activeRes.count || 0;
+        const sitemapsCount = sitemapsRes.count || 0;
         
         // Everything else is considered "In Queue"
         const queued = total - (done + failed + scraping);
 
         document.getElementById('stats').innerHTML = `
-          <div class="stat"><h3>Total Found</h3><p>${total}</p></div>
-          <div class="stat"><h3>Done</h3><p>${done}</p></div>
-          <div class="stat"><h3>Scraping</h3><p>${scraping}</p></div>
+          <div class="stat"><h3>Sub-Sitemaps</h3><p style="color: #8b5cf6">${sitemapsCount}</p></div>
+          <div class="stat"><h3>Done</h3><p style="color: #10b981">${done}</p></div>
+          <div class="stat"><h3>Scraping Pages</h3><p style="color: #3b82f6">${scraping}</p></div>
           <div class="stat"><h3>Queued</h3><p>${queued >= 0 ? queued : 0}</p></div>
-          <div class="stat"><h3>Failed</h3><p>${failed}</p></div>
+          <div class="stat"><h3>Failed</h3><p style="color: #ef4444">${failed}</p></div>
         `;
       } catch (err) { console.error('Stats Error:', err); }
     }

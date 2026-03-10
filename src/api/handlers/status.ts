@@ -1,5 +1,5 @@
 import { db } from '../../db/client';
-import { urls as urlsTable, healthChecks } from '../../db/schema';
+import { urls as urlsTable, healthChecks, sitemaps as sitemapsTable } from '../../db/schema';
 import { eq, count } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
 import os from 'os';
@@ -75,6 +75,13 @@ export async function handleStatus(req: Request, url: URL): Promise<Response> {
   }
 
   try {
+    // 1. Get Sitemap count for this root
+    const sitemapResult = await db
+      .select({ value: count() })
+      .from(sitemapsTable)
+      .where(eq(sitemapsTable.rootId, rootId));
+    
+    // 2. Get Page status breakdown
     const results = await db
       .select({
         status: urlsTable.status,
@@ -84,12 +91,20 @@ export async function handleStatus(req: Request, url: URL): Promise<Response> {
       .where(eq(urlsTable.rootId, rootId))
       .groupBy(urlsTable.status);
 
-    const total = results.reduce((acc, curr) => acc + curr.count, 0);
+    const totalPages = results.reduce((acc, curr) => acc + curr.count, 0);
+    const getCount = (status: string) => results.find(r => r.status === status)?.count || 0;
 
     return new Response(JSON.stringify({
       rootId,
-      total,
-      breakdown: results
+      sitemaps: sitemapResult[0]?.value || 0,
+      pages: {
+        total: totalPages,
+        done: getCount('done'),
+        scraping: getCount('scraping'),
+        queued: getCount('queued'),
+        failed: getCount('failed')
+      },
+      breakdown: results // Keep for compatibility
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
