@@ -26,6 +26,7 @@
     "start:worker:page": "bun page-worker.ts",
     "queue:clear": "bun src/utils/clearQueue.ts",
     "db:clear": "bun src/utils/clearDb.ts",
+    "db:status": "bun src/utils/getSitemapStatus.ts",
     "seed": "bun seed.ts",
     "system:clear": "bun run queue:clear && bun run db:clear",
     "type-check": "tsc --noEmit"
