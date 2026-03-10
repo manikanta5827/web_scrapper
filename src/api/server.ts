@@ -3,6 +3,7 @@ import { db } from '../db/client';
 import { sitemaps } from '../db/schema';
 import { config } from '../utils/config';
 import { boss } from '../queue/boss';
+import { eq } from 'drizzle-orm';
 
 export function startServer() {
   const server = Bun.serve({
@@ -25,26 +26,50 @@ export function startServer() {
 
           logger.info(`POST /scrape: Received request for ${sitemapUrl}`);
           // add the sitemap to db and queue
-          const [siteMap] = await db.insert(sitemaps).values({
+          let [siteMap] = await db.insert(sitemaps).values({
             sitemapUrl,
             status: 'active',
-          }).returning();
+          })
+          .onConflictDoUpdate({
+            target: sitemaps.sitemapUrl,
+            set: { status: 'active', updatedAt: new Date() }
+          })
+          .returning();
 
-          // Enqueue the sitemap for processing if it was successfully added to the DB
           if (!siteMap) {
-            logger.info(`POST /scrape: Sitemap already exists in DB, skipping enqueue: ${sitemapUrl}`);
-            return new Response(JSON.stringify({ error: 'Sitemap already exists' }), {
-              status: 409,
+             return new Response(JSON.stringify({ error: 'Failed to insert sitemap' }), {
+              status: 500,
               headers: { 'Content-Type': 'application/json' },
             });
           }
 
-          await boss.send('sitemap_queue', { sitemapUrl: siteMap.sitemapUrl, sitemapId: siteMap.id, depth: 0 }, {
+          // If it was already a root or we just created it, ensure rootId is set
+          if (!siteMap.rootId) {
+            const [updated] = await db.update(sitemaps)
+              .set({ rootId: siteMap.id })
+              .where(eq(sitemaps.id, siteMap.id))
+              .returning();
+            siteMap = updated;
+          }
+
+          if (!siteMap) {
+             return new Response(JSON.stringify({ error: 'Failed to update sitemap rootId' }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' },
+            });
+          }
+
+          await boss.send('sitemap_queue', { 
+            sitemapUrl: siteMap.sitemapUrl, 
+            sitemapId: siteMap.id, 
+            rootId: siteMap.rootId, 
+            depth: 0 
+          }, {
             retryLimit: config.retryLimit,
             retryDelay: config.retryDelay
           });
 
-          return new Response(JSON.stringify({ message: 'Accepted', id: siteMap?.id }), {
+          return new Response(JSON.stringify({ message: 'Accepted', id: siteMap.id, rootId: siteMap.rootId }), {
             status: 202,
             headers: { 'Content-Type': 'application/json' },
           });
