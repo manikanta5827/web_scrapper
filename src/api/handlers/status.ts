@@ -6,11 +6,11 @@ import os from 'os';
 
 export async function handleGlobalStatus(): Promise<Response> {
   try {
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
     const stats = await db.select().from(healthChecks);
     
-    // Filter for active workers only (seen in last 5 minutes)
-    const activeStats = stats.filter(s => new Date(s.lastSeen) > fiveMinutesAgo);
+    // Filter for active workers only (seen in last 1 minute)
+    const activeStats = stats.filter(s => new Date(s.lastSeen) > oneMinuteAgo);
     
     // Log for debugging (viewable in server console)
     logger.info(`Global Status Query Result (Active): ${JSON.stringify(activeStats)}`);

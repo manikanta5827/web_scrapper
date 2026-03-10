@@ -11,9 +11,9 @@ async function clear() {
     
     // We use a raw SQL TRUNCATE with CASCADE to handle the foreign key relationship
     // This is much faster and cleaner than individual deletes
-    await db.execute(sql`TRUNCATE TABLE ${urls} RESTART IDENTITY CASCADE`);
-    await db.execute(sql`TRUNCATE TABLE ${sitemaps} RESTART IDENTITY CASCADE`);
-    await db.execute(sql`TRUNCATE TABLE ${healthChecks} CASCADE`);
+    await db.execute(sql`TRUNCATE TABLE ${urls}`);
+    await db.execute(sql`TRUNCATE TABLE ${sitemaps} `);
+    await db.execute(sql`TRUNCATE TABLE ${healthChecks} `);
     
     logger.info('Database tables cleared successfully.');
   } catch (error) {
