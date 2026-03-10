@@ -79,12 +79,14 @@ export async function handleScrape(req: Request): Promise<Response> {
       });
     }
 
-    await boss.send('sitemap_queue', { 
+    await boss.send('scraper_queue', { 
+      type: 'sitemap',
       sitemapUrl: siteMap.sitemapUrl, 
       sitemapId: siteMap.id, 
       rootId: siteMap.rootId, 
       depth: 0 
     }, {
+      priority: 10, // Sitemaps get higher priority than page crawls
       retryLimit: config.retryLimit,
       retryDelay: config.retryDelay
     });

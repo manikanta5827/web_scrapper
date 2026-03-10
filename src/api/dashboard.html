@@ -32,8 +32,7 @@
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
     <h1>Scraper Dashboard</h1>
     <div class="worker-status">
-      <div><span class="worker-dot"></span>Sitemap Workers: <strong id="sitemapWorkers">0</strong></div>
-      <div><span class="worker-dot"></span>Page Workers: <strong id="pageWorkers">0</strong></div>
+      <div><span class="worker-dot"></span>Worker Engine: <strong id="unifiedWorkers">0</strong></div>
     </div>
     <button onclick="refreshAll()" class="btn">Refresh Data</button>
   </div>
@@ -91,8 +90,7 @@
       try {
         const res = await fetch('/api/global-status');
         const data = await res.json();
-        document.getElementById('sitemapWorkers').innerText = data.workers.sitemap;
-        document.getElementById('pageWorkers').innerText = data.workers.page;
+        document.getElementById('unifiedWorkers').innerText = data.workers.unified;
       } catch (err) {
         console.error('Error updating worker status:', err);
       }

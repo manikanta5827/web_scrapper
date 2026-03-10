@@ -16,13 +16,11 @@ export async function handleGlobalStatus(): Promise<Response> {
       return record ? record.concurrency : 0;
     };
 
-    const sitemapWorkers = getStat('sitemap-worker');
-    const pageWorkers = getStat('page-worker');
+    const unifiedWorker = getStat('unified-worker');
 
     return new Response(JSON.stringify({
       workers: {
-        sitemap: sitemapWorkers,
-        page: pageWorkers
+        unified: unifiedWorker
       }
     }), {
       status: 200,

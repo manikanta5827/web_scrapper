@@ -30,7 +30,7 @@ export const urls = pgTable('urls', {
 });
 
 export const healthChecks = pgTable('health_checks', {
-  serviceName: text('service_name').primaryKey(), // e.g., 'sitemap-worker', 'page-worker'
+  serviceName: text('service_name').primaryKey(), // e.g., 'unified-worker'
   lastSeen: timestamp('last_seen').defaultNow().notNull(),
   concurrency: integer('concurrency').default(0).notNull(),
 });

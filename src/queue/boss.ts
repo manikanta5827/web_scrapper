@@ -13,12 +13,10 @@ boss.on('error', (e: Error) => logger.error(`pg-boss: ${e.message}`));
 export async function initQueue(): Promise<void> {
   await boss.start();
   
-  // Explicitly create the queues so workers don't crash on startup
-  // If they already exist, this does nothing.
-  await boss.createQueue('page_queue');
-  await boss.createQueue('sitemap_queue');
+  // Explicitly create the scraper queue
+  await boss.createQueue('scraper_queue');
   
-  logger.info('pg-boss queue started and "page_queue", "sitemap_queue" verified');
+  logger.info('pg-boss queue started and "scraper_queue" verified');
 }
 
 export async function stopQueue(): Promise<void> {
