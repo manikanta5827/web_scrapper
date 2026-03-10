@@ -4,6 +4,7 @@ import type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
 export const sitemaps = pgTable('sitemaps', {
   id: serial('id').primaryKey(),
   parentId: integer('parent_id'), // Reference to the parent sitemap if nested
+  rootId: integer('root_id'), // Reference to the top-level sitemap
   sitemapUrl: text('sitemap_url').notNull().unique(),
   lastCheckedAt: timestamp('last_checked_at'),
   lastMod: timestamp('last_mod'),
@@ -16,6 +17,7 @@ export const sitemaps = pgTable('sitemaps', {
 export const urls = pgTable('urls', {
   id: serial('id').primaryKey(),
   sitemapId: integer('sitemap_id').references(() => sitemaps.id).notNull(),
+  rootId: integer('root_id'), // Reference to the top-level sitemap
   url: text('url').notNull().unique(),
   lastMod: timestamp('last_mod'),
   status: text('status', { enum: ['queued', 'scraping', 'scraped', 'processing', 'done', 'failed'] }).default('queued'),

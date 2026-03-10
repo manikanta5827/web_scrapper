@@ -27,7 +27,7 @@ export async function startSitemapWorker(): Promise<void> {
     batchSize: 1
   }, async (jobs: any[]) => {
     const job = jobs[0];
-    const { sitemapUrl, sitemapId, depth } = job.data;
+    const { sitemapUrl, sitemapId, rootId, depth } = job.data;
 
     if (depth > 5) {
       logger.warn(`Max depth reached for: ${sitemapUrl}`);
@@ -71,6 +71,7 @@ export async function startSitemapWorker(): Promise<void> {
           const [newSitemap] = await db.insert(sitemaps)
             .values({ 
               parentId: sitemapId, 
+              rootId: rootId,
               sitemapUrl: entry.loc, 
               status: 'processing',
               lastMod: lastMod
@@ -87,7 +88,12 @@ export async function startSitemapWorker(): Promise<void> {
             .returning();
 
           if (newSitemap) {
-            await boss.send('sitemap_queue', { sitemapUrl: entry.loc, sitemapId: newSitemap.id, depth: depth + 1 });
+            await boss.send('sitemap_queue', { 
+              sitemapUrl: entry.loc, 
+              sitemapId: newSitemap.id, 
+              rootId: rootId,
+              depth: depth + 1 
+            });
           }
         }
       // handle urlset
@@ -106,6 +112,7 @@ export async function startSitemapWorker(): Promise<void> {
             const [newSitemap] = await db.insert(sitemaps)
               .values({ 
                 parentId: sitemapId, 
+                rootId: rootId,
                 sitemapUrl: entry.loc, 
                 status: 'processing',
                 lastMod: lastMod
@@ -121,13 +128,19 @@ export async function startSitemapWorker(): Promise<void> {
               })
               .returning();
             if (newSitemap) {
-              await boss.send('sitemap_queue', { sitemapUrl: entry.loc, sitemapId: newSitemap.id, depth: depth + 1 });
+              await boss.send('sitemap_queue', { 
+                sitemapUrl: entry.loc, 
+                sitemapId: newSitemap.id, 
+                rootId: rootId,
+                depth: depth + 1 
+              });
             }
             // handle url
           } else {
             const [newUrl] = await db.insert(urls)
               .values({ 
                 sitemapId: sitemapId, 
+                rootId: rootId,
                 url: entry.loc, 
                 status: 'queued',
                 lastMod: lastMod
@@ -143,7 +156,7 @@ export async function startSitemapWorker(): Promise<void> {
               })
               .returning();
             if (newUrl) {
-              await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId });
+              await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId, rootId: rootId });
             }
           }
         }
