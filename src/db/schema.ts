@@ -21,6 +21,7 @@ export const urls = pgTable('urls', {
   url: text('url').notNull().unique(),
   lastMod: timestamp('last_mod'),
   s3Url: text('s3_url'), // Link to raw HTML in S3
+  mdS3Url: text('md_s3_url'), // Link to cleaned Markdown in S3
   status: text('status', { enum: ['queued', 'scraping', 'scraped', 'processing', 'done', 'failed'] }).default('queued'),
   failureReason: text('failure_reason'),
   rawContent: text('raw_content'),

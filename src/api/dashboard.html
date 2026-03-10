@@ -187,7 +187,10 @@
           </td>
           <td><span class="badge status-${u.status}">${u.status}</span></td>
           <td style="color:#64748b; font-size:13px;">${new Date(u.updated_at).toLocaleString()}</td>
-          <td>${u.s3_url ? `<a href="${u.s3_url}" target="_blank">HTML</a>` : '-'}</td>
+          <td style="display: flex; gap: 8px;">
+            ${u.s3_url ? `<a href="${u.s3_url}" target="_blank" class="scrape-link">HTML</a>` : '-'}
+            ${u.md_s3_url ? `<a href="${u.md_s3_url}" target="_blank" class="scrape-link">MD</a>` : ''}
+          </td>
         </tr>
       `).join('') || '<tr><td colspan="4" style="text-align:center; padding: 40px; color: #64748b;">No URLs match this filter on this page.</td></tr>';
     }

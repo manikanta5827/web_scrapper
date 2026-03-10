@@ -192,12 +192,17 @@ async function processPage(data: any, jobId: string): Promise<void> {
 
     const contentType = res.headers['content-type'];
     if (contentType?.includes('text/html')) {
-      const s3Url = await uploadToS3(url, res.data);
+      // 1. Upload raw HTML
+      const s3Url = await uploadToS3(url, res.data, 'html');
+      
+      // 2. Extract and Upload cleaned Markdown
       const cleanContent = extract(res.data);
+      const mdS3Url = await uploadToS3(url, cleanContent, 'md');
 
       await db.update(urls)
         .set({
           s3Url: s3Url,
+          mdS3Url: mdS3Url,
           rawContent: cleanContent,
           status: 'done',
           lastScrapedAt: new Date(),
@@ -205,7 +210,7 @@ async function processPage(data: any, jobId: string): Promise<void> {
         })
         .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
       
-      logger.info(`[Page Worker ${jobId}] Successfully scraped & archived: ${url}`);
+      logger.info(`[Page Worker ${jobId}] Successfully scraped & archived (HTML + MD): ${url}`);
     } else {
       await db.update(urls).set({ status: 'failed', failureReason: `Invalid content type: ${contentType}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
     }
