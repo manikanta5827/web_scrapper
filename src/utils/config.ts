@@ -10,13 +10,13 @@ export const config = {
   // 2. The identity string sent to websites so they know who is scraping them
   userAgent: 'Mozilla/5.0 (compatible; WebScraper/1.0)',
 
-  // 3. Maximum time (in milliseconds) to wait for a website to respond (10 seconds)
-  timeout: 10000,
+  // 3. Maximum time (in milliseconds) to wait for a website to respond (30 seconds)
+  timeout: 30000,
 
   // 4. Concurrency settings for the unified worker engine
   workerConcurrency: {
     min: 1,
-    max: 200,
+    max: 150,
     scaleUpThreshold: 5, // total jobs per worker to trigger scale up
     pollInterval: 5000,    // check every 5 seconds for fast response
   },
@@ -49,6 +49,6 @@ export const config = {
 
   // Connection Pool Settings
   // Limiting each pool to 5-10 connections prevents "too many clients" errors
-  dbMaxConnections: 10,
-  bossMaxConnections: 10,
+  dbMaxConnections: 20,
+  bossMaxConnections: 20,
 } as const;
