@@ -1,6 +1,6 @@
 import { db } from '../../db/client';
 import { urls as urlsTable, healthChecks, sitemaps as sitemapsTable } from '../../db/schema';
-import { eq, count } from 'drizzle-orm';
+import { eq, count, and, isNotNull } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
 import os from 'os';
 
@@ -75,11 +75,17 @@ export async function handleStatus(req: Request, url: URL): Promise<Response> {
   }
 
   try {
-    // 1. Get Sitemap count for this root
+    // 1. Get SUB-Sitemap count for this root (excluding the root itself)
+    // We do this by checking where root_id matches but parent_id IS NOT NULL
     const sitemapResult = await db
       .select({ value: count() })
       .from(sitemapsTable)
-      .where(eq(sitemapsTable.rootId, rootId));
+      .where(
+        and(
+          eq(sitemapsTable.rootId, rootId),
+          isNotNull(sitemapsTable.parentId)
+        )
+      );
     
     // 2. Get Page status breakdown
     const results = await db
