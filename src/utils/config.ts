@@ -13,11 +13,20 @@ export const config = {
   // 3. Maximum time (in milliseconds) to wait for a website to respond (10 seconds)
   timeout: 10000,
 
-  // 4. How many URLs to scrape for sitemaps at the exact same time within ONE worker process
-  siteMapQueueConcurrency: 10,
+  // 4. Concurrency settings for auto-scaling workers
+  siteMapQueueConcurrency: {
+    min: 1,
+    max: 10,
+    scaleUpThreshold: 50, // jobs per worker to trigger scale up
+    pollInterval: 15000, // check every 15 seconds
+  },
 
-  // How many individual page URLs to scrape at the exact same time within ONE worker process
-  pageQueueConcurrency: 10,
+  pageQueueConcurrency: {
+    min: 5,
+    max: 50,
+    scaleUpThreshold: 100, // jobs per worker to trigger scale up
+    pollInterval: 10000, // check every 10 seconds
+  },
 
   // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
   retryLimit: 1,
