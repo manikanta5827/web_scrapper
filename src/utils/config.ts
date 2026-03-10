@@ -17,7 +17,7 @@ export const config = {
   workerConcurrency: {
     min: 1,
     max: 150,
-    scaleUpThreshold: 50, // total jobs per worker to trigger scale up
+    scaleUpThreshold: 10, // total jobs per worker to trigger scale up
     pollInterval: 5000,    // check every 5 seconds for fast response
   },
 
