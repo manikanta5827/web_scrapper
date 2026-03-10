@@ -15,6 +15,13 @@
       "when": 1773068502281,
       "tag": "0001_nappy_scrambler",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773121868353,
+      "tag": "0002_tense_masque",
+      "breakpoints": true
     }
   ]
 }
