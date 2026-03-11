@@ -32,6 +32,9 @@ function isNotFoundError(e: any): boolean {
 /**
  * Helper to bulk insert and queue sitemaps in chunks
  */
+/**
+ * Helper to bulk insert sitemaps in chunks
+ */
 async function bulkProcessSitemaps(
   entries: { loc: string; lastMod: Date | null }[],
   parentId: number,
@@ -40,9 +43,17 @@ async function bulkProcessSitemaps(
 ): Promise<void> {
   if (entries.length === 0) return;
 
+  // Deduplicate entries by loc to avoid Postgres statement errors
+  const uniqueEntries = Array.from(
+    entries.reduce((map, entry) => {
+      map.set(entry.loc, entry);
+      return map;
+    }, new Map<string, { loc: string; lastMod: Date | null }>()).values()
+  );
+
   // Chunk the entries to prevent DB/Memory issues
-  for (let i = 0; i < entries.length; i += config.batchSize) {
-    const chunk = entries.slice(i, i + config.batchSize);
+  for (let i = 0; i < uniqueEntries.length; i += config.batchSize) {
+    const chunk = uniqueEntries.slice(i, i + config.batchSize);
     
     const inserted = await db.insert(sitemaps)
       .values(chunk.map(e => ({
@@ -52,11 +63,10 @@ async function bulkProcessSitemaps(
         status: 'processing' as const,
         lastMod: e.lastMod
       })))
-      .onConflictDoUpdate({
-        target: sitemaps.sitemapUrl,
-        set: { updatedAt: new Date() }
-      })
+      .onConflictDoNothing()
       .returning({ id: sitemaps.id, sitemapUrl: sitemaps.sitemapUrl });
+
+    if (inserted.length === 0) continue;
 
     const jobs = inserted.map(s => ({
       data: {
@@ -74,7 +84,7 @@ async function bulkProcessSitemaps(
     }));
 
     await boss.insert('sitemap_queue', jobs);
-    logger.info(`Bulk discovered chunk of ${inserted.length} sitemaps (Total: ${entries.length})`);
+    logger.info(`Bulk discovered chunk of ${inserted.length} NEW sitemaps (Total chunk: ${chunk.length})`);
   }
 }
 
@@ -88,9 +98,17 @@ async function bulkProcessUrls(
 ): Promise<void> {
   if (entries.length === 0) return;
 
+  // Deduplicate entries by loc to avoid Postgres statement errors
+  const uniqueEntries = Array.from(
+    entries.reduce((map, entry) => {
+      map.set(entry.loc, entry);
+      return map;
+    }, new Map<string, { loc: string; lastMod: Date | null }>()).values()
+  );
+
   // Chunk the entries to prevent DB/Memory issues
-  for (let i = 0; i < entries.length; i += config.batchSize) {
-    const chunk = entries.slice(i, i + config.batchSize);
+  for (let i = 0; i < uniqueEntries.length; i += config.batchSize) {
+    const chunk = uniqueEntries.slice(i, i + config.batchSize);
 
     const inserted = await db.insert(urls)
       .values(chunk.map(e => ({
@@ -100,11 +118,10 @@ async function bulkProcessUrls(
         status: 'queued' as const,
         lastMod: e.lastMod
       })))
-      .onConflictDoUpdate({
-        target: urls.url,
-        set: { updatedAt: new Date() }
-      })
+      .onConflictDoNothing()
       .returning({ id: urls.id, url: urls.url });
+
+    if (inserted.length === 0) continue;
 
     const jobs = inserted.map(u => ({
       data: { url: u.url, sitemapId, rootId },
@@ -117,7 +134,7 @@ async function bulkProcessUrls(
     }));
 
     await boss.insert('page_queue', jobs);
-    logger.info(`Bulk queued chunk of ${inserted.length} URLs (Total: ${entries.length})`);
+    logger.info(`Bulk queued chunk of ${inserted.length} NEW URLs (Total chunk: ${chunk.length})`);
   }
 }
 
