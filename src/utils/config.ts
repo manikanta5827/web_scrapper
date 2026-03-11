@@ -63,8 +63,8 @@ export const config = {
   },
 
   // Database connection pool settings (Optimized for Supabase)
-  dbMaxConnections: 10,
-  bossMaxConnections: 20,
+  dbMaxConnections: 20, // Increased to support 150 parallel workers saving data
+  bossMaxConnections: 40, // Increased to support 170 total workers polling/heartbeating
   dbConnectionTimeout: 60000,
   dbIdleTimeout: 30000,
 } as const;
