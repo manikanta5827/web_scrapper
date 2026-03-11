@@ -36,6 +36,7 @@ COPY package.json ./
 COPY drizzle.config.ts ./
 COPY drizzle ./drizzle
 COPY src/db/schema.ts ./src/db/schema.ts
+COPY src/api/*.html ./src/api/
 COPY start.sh ./
 
 # Set environment variables

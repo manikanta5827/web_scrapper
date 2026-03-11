@@ -4,3 +4,7 @@ node_modules
 tests
 docs
 *.log
+
+/screenshots
+
+/logs
