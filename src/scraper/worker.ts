@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { db } from '../db/client';
 import { sitemaps, urls } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { boss } from '../queue/boss';
 import { config } from '../utils/config';
 import { extract } from './extractor';
@@ -34,10 +34,7 @@ function isNotFoundError(e: any): boolean {
 }
 
 /**
- * Helper to bulk insert and queue sitemaps in chunks
- */
-/**
- * Helper to bulk insert sitemaps in chunks
+ * Bulk insert and queue sitemaps in chunks
  */
 async function bulkProcessSitemaps(
   entries: { loc: string; lastMod: Date | null }[],
@@ -47,7 +44,7 @@ async function bulkProcessSitemaps(
 ): Promise<void> {
   if (entries.length === 0) return;
 
-  // Deduplicate entries by loc to avoid Postgres statement errors
+  // Deduplicate by URL to avoid conflicts
   const uniqueEntries = Array.from(
     entries.reduce((map, entry) => {
       map.set(entry.loc, entry);
@@ -55,7 +52,7 @@ async function bulkProcessSitemaps(
     }, new Map<string, { loc: string; lastMod: Date | null }>()).values()
   );
 
-  // Chunk the entries to prevent DB/Memory issues
+  // Process in batches to manage memory and DB load
   for (let i = 0; i < uniqueEntries.length; i += config.batchSize) {
     const chunk = uniqueEntries.slice(i, i + config.batchSize);
     
@@ -88,21 +85,22 @@ async function bulkProcessSitemaps(
     }));
 
     await boss.insert('sitemap_queue', jobs);
-    logger.info(`Bulk discovered chunk of ${inserted.length} NEW sitemaps (Total chunk: ${chunk.length})`);
+    logger.debug(`Queued chunk of ${inserted.length} new sitemaps`);
   }
 }
 
 /**
- * Helper to bulk insert and queue URLs in chunks
+ * Bulk insert and queue URLs in chunks
  */
 async function bulkProcessUrls(
+
   entries: { loc: string; lastMod: Date | null }[],
   sitemapId: number,
   rootId: number
 ): Promise<void> {
   if (entries.length === 0) return;
 
-  // Deduplicate entries by loc to avoid Postgres statement errors
+  // Deduplicate by URL
   const uniqueEntries = Array.from(
     entries.reduce((map, entry) => {
       map.set(entry.loc, entry);
@@ -110,7 +108,7 @@ async function bulkProcessUrls(
     }, new Map<string, { loc: string; lastMod: Date | null }>()).values()
   );
 
-  // Chunk the entries to prevent DB/Memory issues
+  // Process in batches
   for (let i = 0; i < uniqueEntries.length; i += config.batchSize) {
     const chunk = uniqueEntries.slice(i, i + config.batchSize);
 
@@ -138,7 +136,7 @@ async function bulkProcessUrls(
     }));
 
     await boss.insert('page_queue', jobs);
-    logger.info(`Bulk queued chunk of ${inserted.length} NEW URLs (Total chunk: ${chunk.length})`);
+    logger.debug(`Queued chunk of ${inserted.length} new URLs`);
   }
 }
 
@@ -273,30 +271,10 @@ async function processSitemap(data: any): Promise<void> {
 }
 
 /**
- * Logic for processing pages
+ * Logic for processing a single URL (Helper for batch)
  */
-async function processPage(data: any, jobId: string): Promise<void> {
-  const { url, sitemapId } = data;
-
+async function scrapeUrl(url: string, sitemapId: number, rootId: number) {
   try {
-    try {
-      logger.info(`[Page Worker ${jobId}] Scraping: ${url}`);
-      const [updated] = await db.update(urls)
-        .set({ status: 'scraping', updatedAt: getISTDate() })
-        .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)))
-        .returning();
-      
-      if (!updated) {
-        logger.warn(`[Page Worker ${jobId}] URL ${url} not found in DB, it might have been deleted. Skipping.`);
-        return;
-      }
-    } catch (dbErr) {
-      if (isNotFoundError(dbErr)) return;
-      throw dbErr;
-    }
-
-    await sleep(Math.floor(Math.random() * 2000) + 1000);
-    
     const res = await axios.get(url, {
       timeout: config.timeout,
       headers: { 'User-Agent': config.userAgent },
@@ -305,60 +283,82 @@ async function processPage(data: any, jobId: string): Promise<void> {
 
     if (res.status === 429) throw new Error('Rate limited (429)');
     if (res.status === 403 || res.status === 401) {
-      try {
-        await db.update(urls).set({ status: 'failed', failureReason: `Auth error: ${res.status}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
-      } catch (dbErr) {
-        if (isNotFoundError(dbErr)) return;
-        throw dbErr;
-      }
-      return;
+      return { url, sitemapId, rootId, status: 'failed' as const, failureReason: `Auth error: ${res.status}` };
     }
 
     const contentType = res.headers['content-type'];
     if (contentType?.includes('text/html')) {
       const cleanContent = extract(res.data);
-
-      // Start both S3 uploads in parallel - all-or-nothing
-      // If either fails, Promise.all will throw and the queue will retry.
       const [s3Url, mdS3Url] = await Promise.all([
         uploadToS3(url, res.data, 'html'),
         uploadToS3(url, cleanContent, 'md')
       ]);
 
-      try {
-        await db.update(urls)
-          .set({
-            s3Url,
-            mdS3Url,
-            status: 'done',
-            lastScrapedAt: getISTDate(),
-            updatedAt: getISTDate(),
-          })
-          .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
-        
-        logger.info(`[Page Worker ${jobId}] Successfully scraped & archived (HTML + MD): ${url}`);
-      } catch (dbErr) {
-        if (isNotFoundError(dbErr)) return;
-        throw dbErr;
-      }
+      return {
+        url,
+        sitemapId,
+        rootId,
+        s3Url,
+        mdS3Url,
+        status: 'done' as const,
+        lastScrapedAt: getISTDate(),
+        updatedAt: getISTDate()
+      };
     } else {
-      try {
-        await db.update(urls).set({ status: 'failed', failureReason: `Invalid content type: ${contentType}` }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
-      } catch (dbErr) {
-        if (isNotFoundError(dbErr)) return;
-        throw dbErr;
-      }
+      return { url, sitemapId, rootId, status: 'failed' as const, failureReason: `Invalid content type: ${contentType}` };
     }
   } catch (e) {
-    if (isNotFoundError(e)) return;
     const msg = e instanceof Error ? e.message : 'Unknown error';
-    logger.error(`[Page Worker ${jobId}] Failed to scrape ${url}: ${msg}`);
-    try {
-      await db.update(urls).set({ status: 'failed', failureReason: msg }).where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
-    } catch (dbErr) {
-      // Ignore
-    }
-    throw e;
+    return { url, sitemapId, rootId, status: 'failed' as const, failureReason: msg };
+  }
+}
+
+/**
+ * Logic for processing a batch of pages
+ */
+async function processPageBatch(jobs: any[]): Promise<void> {
+  const batchId = jobs[0]?.id?.substring(0, 8) || 'unknown';
+  logger.info(`[Page Worker] Processing batch of ${jobs.length} jobs (Starting ID: ${batchId})`);
+
+  // 1. Mark all in batch as 'scraping' in ONE call
+  const urlKeys = jobs.map(j => j.data.url);
+  try {
+    await db.update(urls)
+      .set({ status: 'scraping', updatedAt: getISTDate() })
+      .where(sql`${urls.url} IN (${sql.join(urlKeys.map(u => sql`${u}`), sql`, `)})`);
+  } catch (err) {
+    if (isNotFoundError(err)) return;
+    logger.error(`[Page Worker] Failed to update batch status to scraping: ${err}`);
+  }
+
+  // 2. Process all URLs in parallel (CURL + S3)
+  // We use Promise.all to run them concurrently within the batch
+  const results = await Promise.all(jobs.map(job => 
+    scrapeUrl(job.data.url, job.data.sitemapId, job.data.rootId)
+  ));
+
+  // 3. Sync all results to DB in ONE bulk "upsert"
+  try {
+    await db.insert(urls)
+      .values(results)
+      .onConflictDoUpdate({
+        target: urls.url,
+        set: {
+          status: sql`excluded.status`,
+          failureReason: sql`excluded.failure_reason`,
+          s3Url: sql`excluded.s3_url`,
+          mdS3Url: sql`excluded.md_s3_url`,
+          lastScrapedAt: sql`excluded.last_scraped_at`,
+          updatedAt: sql`excluded.updated_at`
+        }
+      });
+    
+    const succeeded = results.filter(r => r.status === 'done').length;
+    logger.info(`[Page Worker] Batch completed: ${succeeded} succeeded, ${results.length - succeeded} failed`);
+  } catch (err) {
+    if (isNotFoundError(err)) return;
+    logger.error(`[Page Worker] Failed to sync batch results to DB: ${err}`);
+    throw err; // Re-throw to trigger pg-boss retry for the whole batch
   }
 }
 
@@ -370,7 +370,6 @@ export async function startSitemapWorker(): Promise<void> {
     queueName: 'sitemap_queue',
     serviceName: 'sitemap-worker',
     ...config.sitemapConcurrency,
-    batchSize: 1
   }, async (jobs: any[]) => {
     await processSitemap(jobs[0].data);
   });
@@ -387,10 +386,8 @@ export async function startPageWorker(): Promise<void> {
     queueName: 'page_queue',
     serviceName: 'page-worker',
     ...config.pageConcurrency,
-    batchSize: 1
   }, async (jobs: any[]) => {
-    const job = jobs[0];
-    await processPage(job.data, job.id);
+    await processPageBatch(jobs);
   });
 
   await scaler.start();
