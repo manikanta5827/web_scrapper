@@ -35,11 +35,8 @@
   <div class="header">
     <h1 style="margin:0; font-size: 24px;">Scraper Management</h1>
     <div class="worker-status">
-      <div><span class="worker-dot"></span>Sitemap: <strong id="sitemapWorkers">0</strong></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot"></span>Page: <strong id="pageWorkers">0</strong></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #3b82f6;"></span>Data DB: <strong id="dbActive">0</strong></div>
+      <div><span class="worker-dot" style="background: #3b82f6;"></span>Data DB: <strong id="dbActive">0</strong></div>
       <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #8b5cf6;"></span>Queue DB: <strong id="queueActive">0</strong></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #f59e0b;"></span>Throughput: <strong id="throughputRpm">0</strong> <small style="color: #64748b; font-weight: normal;">RPM</small></div>
     </div>
   </div>
 
@@ -175,14 +172,9 @@
       try {
         const res = await fetch('/api/global-status');
         const data = await res.json();
-        document.getElementById('sitemapWorkers').innerText = data.workers.sitemap;
-        document.getElementById('pageWorkers').innerText = data.workers.page;
         if (data.db) {
           document.getElementById('dbActive').innerText = data.db.totalActiveConnections;
           document.getElementById('queueActive').innerText = data.db.queueActiveConnections;
-        }
-        if (data.throughput) {
-          document.getElementById('throughputRpm').innerText = data.throughput.rpm;
         }
       } catch (err) {
         console.error('Error updating worker status:', err);

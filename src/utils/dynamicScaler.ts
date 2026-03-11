@@ -1,12 +1,9 @@
 import { boss } from '../queue/boss';
 import { logger } from './logger';
-import { db } from '../db/client';
-import { healthChecks } from '../db/schema';
-import { getISTDate } from './time';
 
 export interface ScalerOptions {
   queueName: string;
-  serviceName: string; // The service name to update in healthChecks
+  serviceName: string; // The service name
   min: number;
   max: number;
   scaleUpThreshold: number;
@@ -29,29 +26,6 @@ export class DynamicScaler {
   ) {}
 
   /**
-   * Update the heartbeat and pool stats in DB
-   */
-  private async updateGlobalCount() {
-    try {
-      await db.insert(healthChecks)
-        .values({ 
-          serviceName: this.options.serviceName, 
-          concurrency: this.currentConcurrency,
-          lastSeen: getISTDate()
-        })
-        .onConflictDoUpdate({
-          target: healthChecks.serviceName,
-          set: { 
-            concurrency: this.currentConcurrency,
-            lastSeen: getISTDate()
-          }
-        });
-    } catch (err) {
-      logger.error(`[Scaler] ${this.options.serviceName} heartbeat failed: ${err instanceof Error ? err.message : 'Unknown'}`);
-    }
-  }
-
-  /**
    * Initialize workers and start monitoring
    */
   async start() {
@@ -67,7 +41,6 @@ export class DynamicScaler {
       this.currentConcurrency = this.workerIds.length;
     }
 
-    await this.updateGlobalCount();
     logger.info(`[Scaler] Started ${this.options.serviceName} with ${this.currentConcurrency} workers (polling: ${pollingIntervalSeconds}s)`);
 
     this.interval = setInterval(() => this.checkAndScale(), this.options.pollInterval || 30000);
@@ -87,7 +60,6 @@ export class DynamicScaler {
     
     this.workerIds = [];
     this.currentConcurrency = 0;
-    await this.updateGlobalCount();
     logger.info(`[Scaler] Stopped ${this.options.serviceName}`);
   }
 
@@ -115,8 +87,6 @@ export class DynamicScaler {
         const newIds = await Promise.all(addPromises);
         this.workerIds.push(...newIds.filter((id): id is string => !!id));
         this.currentConcurrency = this.workerIds.length;
-        
-        await this.updateGlobalCount();
       } else if (targetConcurrency < this.currentConcurrency && this.currentConcurrency > min) {
         const toRemove = this.currentConcurrency - targetConcurrency;
         logger.debug(`[Scaler] ${queueName} Scaling DOWN: ${this.currentConcurrency} -> ${targetConcurrency}`);
@@ -124,10 +94,6 @@ export class DynamicScaler {
         const removeIds = this.workerIds.splice(-toRemove);
         await Promise.all(removeIds.map(id => boss.offWork(queueName, { id })));
         this.currentConcurrency = this.workerIds.length;
-        
-        await this.updateGlobalCount();
-      } else {
-        await this.updateGlobalCount();
       }
     } catch (err) {
       logger.error(`[Scaler] ${queueName} scaling failed: ${err instanceof Error ? err.message : 'Unknown'}`);

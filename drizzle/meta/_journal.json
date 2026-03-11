@@ -71,6 +71,13 @@
       "when": 1773259957751,
       "tag": "0009_calm_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1773262219735,
+      "tag": "0010_awesome_miracleman",
+      "breakpoints": true
     }
   ]
 }

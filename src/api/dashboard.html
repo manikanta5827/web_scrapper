@@ -31,7 +31,7 @@
   </style>
 </head>
 <body>
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px;">
     <div>
       <a href="/dashboard" class="btn-back">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
@@ -39,20 +39,14 @@
       </a>
       <h1 style="margin:0">Scraper Dashboard</h1>
     </div>
-    <div class="worker-status">
-      <div><span class="worker-dot"></span>Sitemap: <strong id="sitemapWorkers">0</strong></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot"></span>Page: <strong id="pageWorkers">0</strong></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #3b82f6;"></span>Data DB: <strong id="dbActive">0</strong></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #8b5cf6;"></span>Queue DB: <strong id="queueActive">0</strong></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #f59e0b;"></span>Throughput: <strong id="throughputRpm">0</strong> <small style="color: #64748b; font-weight: normal;">RPM</small></div>
-      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;">
-        <span style="color: #64748b;">System RAM:</span> <strong id="systemRam">0 GB</strong>
-        <span style="color: #64748b; margin-left: 10px;">Free:</span> <strong id="freeRam">0 GB</strong>
-        <span style="color: #64748b; margin-left: 10px;">Process:</span> <strong id="processRam">0 MB</strong>
-        (<span id="processRamPercent">0</span>%)
-      </div>
-    </div>
     <button onclick="refreshAll()" class="btn">Refresh Data</button>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 25px;">
+    <div class="worker-status">
+      <div><span class="worker-dot" style="background: #3b82f6;"></span>Data DB: <strong id="dbActive">0</strong></div>
+      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #8b5cf6;"></span>Queue DB: <strong id="queueActive">0</strong></div>
+    </div>
   </div>
 
   <div id="stats" class="grid"></div>
@@ -114,27 +108,10 @@
         const res = await fetch('/api/global-status');
         const data = await res.json();
         
-        // Update Workers
-        document.getElementById('sitemapWorkers').innerText = data.workers.sitemap;
-        document.getElementById('pageWorkers').innerText = data.workers.page;
-        
         // Update DB
         if (data.db) {
           document.getElementById('dbActive').innerText = data.db.totalActiveConnections;
           document.getElementById('queueActive').innerText = data.db.queueActiveConnections;
-        }
-
-        // Update Throughput
-        if (data.throughput) {
-          document.getElementById('throughputRpm').innerText = data.throughput.rpm;
-        }
-
-        // Update Memory
-        if (data.system) {
-          document.getElementById('systemRam').innerText = formatGB(data.system.totalMemory);
-          document.getElementById('freeRam').innerText = formatGB(data.system.freeMemory);
-          document.getElementById('processRam').innerText = formatMB(data.process.rss);
-          document.getElementById('processRamPercent').innerText = data.process.percentOfTotal;
         }
       } catch (err) {
         console.error('Error updating worker status:', err);

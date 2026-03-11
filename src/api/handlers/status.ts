@@ -1,17 +1,11 @@
 import { db, queuePool } from '../../db/client';
-import { urls as urlsTable, healthChecks, sitemaps as sitemapsTable } from '../../db/schema';
+import { urls as urlsTable, sitemaps as sitemapsTable } from '../../db/schema';
 import { eq, count, and, isNotNull, sql } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
-import os from 'os';
+import { boss } from '../../queue/boss';
 
 export async function handleGlobalStatus(): Promise<Response> {
   try {
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
-    const stats = await db.select().from(healthChecks);
-    
-    // Filter for active workers only (seen in last 1 minute)
-    const activeStats = stats.filter(s => new Date(s.lastSeen) > oneMinuteAgo);
-    
     // 1. Query Project A (Main DB) connections
     const dbConnectionsResult = await db.execute(sql`
       SELECT count(*) as count 
@@ -40,67 +34,22 @@ export async function handleGlobalStatus(): Promise<Response> {
       queueDbConnections = totalDbConnections; // Same DB
     }
 
-    // 3. Query Throughput (RPM - Records Per Minute)
-    // We count URLs finished (done/failed) in the last 60 seconds
-    const throughputResult = await db.execute(sql`
-      SELECT count(*) as count 
-      FROM urls 
-      WHERE last_scraped_at > ((now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes' - interval '1 minute')
-    `);
-    const rpm = parseInt(throughputResult.rows[0]?.count as string || '0');
-
-    // Combine all
-    const allPools: any[] = []; 
-
-    const getStat = (name: string) => {
-      const record = activeStats.find((s: any) => (s.serviceName === name || s.service_name === name));
-      return record ? record.concurrency : 0;
-    };
-
-    const sitemapWorker = getStat('sitemap-worker');
-    const pageWorker = getStat('page-worker');
-
-    // System Memory Stats
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usedMem = totalMem - freeMem;
-    const memUsagePercent = ((usedMem / totalMem) * 100).toFixed(2);
-
-    // Process Memory Stats
-    const processMem = process.memoryUsage();
-    
     return new Response(JSON.stringify({
       workers: {
-        sitemap: sitemapWorker,
-        page: pageWorker
-      },
-      throughput: {
-        rpm: rpm,
-        rps: parseFloat((rpm / 60).toFixed(2))
+        sitemap: 0,
+        page: 0
       },
       db: {
         totalActiveConnections: totalDbConnections,
-        queueActiveConnections: queueDbConnections,
-        processPools: allPools
-      },
-      system: {
-        totalMemory: totalMem,
-        freeMemory: freeMem,
-        usedMemory: usedMem,
-        usagePercent: parseFloat(memUsagePercent)
-      },
-      process: {
-        rss: processMem.rss,
-        heapUsed: processMem.heapUsed,
-        percentOfTotal: parseFloat(((processMem.rss / totalMem) * 100).toFixed(2))
+        queueActiveConnections: queueDbConnections
       }
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (e) {
-    logger.error(`GET /api/global-status: Error fetching worker status: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    return new Response(JSON.stringify({ error: 'Server error fetching worker status' }), {
+    logger.error(`GET /api/global-status: Error fetching global status: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    return new Response(JSON.stringify({ error: 'Server error fetching status' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

@@ -29,11 +29,11 @@ export const config = {
   // Page worker scaling parameters
   pageConcurrency: {
     min: 1,
-    max: 150,
+    max: 25, // Lower worker count = less CPU overhead
     scaleUpThreshold: 20,
     pollInterval: 5000,
-    batchSize: 20, // Pull 20 URLs at once for batch processing
-    pollingIntervalSeconds: 5,
+    batchSize: 100, // Higher batch size = more work per DB call
+    pollingIntervalSeconds: 2, // Faster polling since we have fewer workers
   },
 
   // Max retry attempts for failed jobs
@@ -63,8 +63,8 @@ export const config = {
   },
 
   // Database connection pool settings (Optimized for Supabase)
-  dbMaxConnections: 20, // Increased to support 150 parallel workers saving data
-  bossMaxConnections: 40, // Increased to support 170 total workers polling/heartbeating
+  dbMaxConnections: 30, // Increased to support large batch saves
+  bossMaxConnections: 50, // More connections than workers to ensure heartbeat safety
   dbConnectionTimeout: 60000,
   dbIdleTimeout: 30000,
 } as const;

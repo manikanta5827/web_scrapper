@@ -40,14 +40,7 @@ export const urls = pgTable('urls', {
     rootIdIdx: index('urls_root_id_idx').on(table.rootId),
     statusIdx: index('urls_status_idx').on(table.status),
     combinedIdx: index('urls_root_status_idx').on(table.rootId, table.status),
-    lastScrapedAtIdx: index('urls_last_scraped_at_idx').on(table.lastScrapedAt),
   };
-});
-
-export const healthChecks = pgTable('health_checks', {
-  serviceName: text('service_name').primaryKey(), // e.g., 'unified-worker'
-  lastSeen: timestamp('last_seen').default(istNow).notNull(),
-  concurrency: integer('concurrency').default(0).notNull(),
 });
 
 export type Sitemap = InferSelectModel<typeof sitemaps>;
