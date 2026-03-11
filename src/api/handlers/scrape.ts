@@ -87,7 +87,8 @@ export async function handleScrape(req: Request): Promise<Response> {
     }, {
       priority: 10, // Sitemaps get higher priority
       retryLimit: config.retryLimit,
-      retryDelay: config.retryDelay
+      retryDelay: config.retryDelay,
+      retryBackoff: true // Enable exponential backoff
     });
 
     return new Response(JSON.stringify({ message: 'Accepted', id: siteMap.id, rootId: siteMap.rootId }), {

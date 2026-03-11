@@ -22,6 +22,24 @@ Distributed, event-driven system using Bun, Drizzle ORM, and pg-boss.
 - **Duplicate Prevention:** Upsert logic (`onConflictDoUpdate`) prevents re-inserting URLs.
 - **Depth Protection:** Prevents infinite circular sitemaps from crashing the system.
 
+## Performance Optimizations
+
+### Bulk Database & Queue Operations
+To prevent database connection throttling (especially on managed services like Supabase), the system uses bulk operations for sitemap discovery:
+- **Bulk Insert:** Instead of individual inserts, discovered sitemaps and URLs are gathered into arrays and inserted in a single `db.insert().values()` call.
+- **Bulk Queueing:** Uses `pg-boss.insert()` to queue multiple jobs in a single transaction, reducing the number of round-trips to the database.
+- **Reduced Overhead:** This optimization reduces the database connection load from $O(N)$ to $O(1)$ per processed sitemap.
+
+### Parallel I/O & S3 Reliability
+The Page Worker is optimized for high-throughput scraping:
+- **Parallel Uploads:** Uses `Promise.allSettled` to upload raw HTML and cleaned Markdown to S3 simultaneously, significantly reducing the "busy" time per worker.
+- **Partial Success Handling:** If one upload fails (e.g., Markdown extraction error), the system still saves the successful upload URL (e.g., raw HTML) to the database.
+- **Exponential Backoff Retries:** All S3 operations are wrapped in a retry mechanism with exponential backoff (up to 3 attempts) to handle transient network issues or S3 API limits.
+
+### Connection Management
+- **Stateless Workers:** Workers do not hold persistent connections longer than necessary.
+- **Rate Limiting via Concurrency:** Instead of complex rate-limiting logic, the system relies on the `DynamicScaler` and `localConcurrency` to control the number of simultaneous outbound requests.
+
 ## Dynamic Scaling Strategy
 
 The system implements a custom `DynamicScaler` to manage worker lifecycle based on real-time queue pressure. This allows for horizontal scaling within a single process.

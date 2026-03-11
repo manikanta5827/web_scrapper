@@ -61,7 +61,12 @@ async function bulkProcessSitemaps(
       rootId,
       depth: depth + 1
     },
-    options: { priority: 10 }
+    options: { 
+      priority: 10,
+      retryLimit: config.retryLimit,
+      retryDelay: config.retryDelay,
+      retryBackoff: true
+    }
   }));
 
   await boss.insert('sitemap_queue', jobs);
@@ -94,7 +99,12 @@ async function bulkProcessUrls(
 
   const jobs = inserted.map(u => ({
     data: { url: u.url, sitemapId, rootId },
-    options: { priority: 1 }
+    options: { 
+      priority: 1,
+      retryLimit: config.retryLimit,
+      retryDelay: config.retryDelay,
+      retryBackoff: true
+    }
   }));
 
   await boss.insert('page_queue', jobs);
@@ -275,18 +285,20 @@ async function processPage(data: any, jobId: string): Promise<void> {
 
     const contentType = res.headers['content-type'];
     if (contentType?.includes('text/html')) {
-      // 1. Upload raw HTML
-      const s3Url = await uploadToS3(url, res.data, 'html');
-      
-      // 2. Extract and Upload cleaned Markdown
       const cleanContent = extract(res.data);
-      const mdS3Url = await uploadToS3(url, cleanContent, 'md');
+
+      // Start both S3 uploads in parallel - all-or-nothing
+      // If either fails, Promise.all will throw and the queue will retry.
+      const [s3Url, mdS3Url] = await Promise.all([
+        uploadToS3(url, res.data, 'html'),
+        uploadToS3(url, cleanContent, 'md')
+      ]);
 
       try {
         await db.update(urls)
           .set({
-            s3Url: s3Url,
-            mdS3Url: mdS3Url,
+            s3Url,
+            mdS3Url,
             status: 'done',
             lastScrapedAt: new Date(),
             updatedAt: new Date(),

@@ -28,10 +28,10 @@ export const config = {
   },
 
   // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
-  retryLimit: 1,
+  retryLimit: 3,
 
   // 6. How many seconds to wait before trying a failed job again
-  retryDelay: 5,
+  retryDelay: 30,
 
   // 8. The maximum number of text characters to save in the database per page (to save space)
   maxContentLength: 50000,
