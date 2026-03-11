@@ -6,7 +6,7 @@
   "scripts": {
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
-    "db:push": "drizzle-kit push",
+    "db:push": "drizzle-kit push --force",
     "db:studio": "drizzle-kit studio",
     "dev:server": "bun --hot server-init.ts",
     "dev:worker:sitemap": "bun --hot worker-init.ts sitemap",
