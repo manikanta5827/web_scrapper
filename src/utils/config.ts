@@ -19,7 +19,7 @@ export const config = {
   // Sitemap worker scaling parameters
   sitemapConcurrency: {
     min: 1,
-    max: 10,
+    max: 20,
     scaleUpThreshold: 5,
     pollInterval: 10000,
     batchSize: 1, // Sitemaps are heavy, process 1 by 1
@@ -29,10 +29,10 @@ export const config = {
   // Page worker scaling parameters
   pageConcurrency: {
     min: 1,
-    max: 50,
+    max: 150,
     scaleUpThreshold: 20,
     pollInterval: 5000,
-    batchSize: 10, // Pull 10 URLs at once for batch processing
+    batchSize: 20, // Pull 20 URLs at once for batch processing
     pollingIntervalSeconds: 5,
   },
 
@@ -63,8 +63,8 @@ export const config = {
   },
 
   // Database connection pool settings (Optimized for Supabase)
-  dbMaxConnections: 5,
-  bossMaxConnections: 10,
+  dbMaxConnections: 10,
+  bossMaxConnections: 20,
   dbConnectionTimeout: 60000,
   dbIdleTimeout: 30000,
 } as const;
