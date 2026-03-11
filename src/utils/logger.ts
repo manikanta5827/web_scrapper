@@ -23,7 +23,10 @@ export const logger = winston.createLogger({
     }),
     new winston.transports.File({ 
       filename: config.logFile,
-      level: 'debug'
+      level: 'debug',
+      maxsize: 5242880, // 5MB
+      maxFiles: 3,
+      tailable: true,
     }),
   ],
 });

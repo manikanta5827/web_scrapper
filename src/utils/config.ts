@@ -52,7 +52,7 @@ export const config = {
   env: process.env.NODE_ENV || 'development',
 
   // Log output filename
-  logFile: 'app.log',
+  logFile: 'logs/app.log',
   
   // S3 storage configuration
   s3: {
