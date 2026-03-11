@@ -80,8 +80,8 @@ async function processSitemap(data: any): Promise<void> {
       const entries = Array.isArray(result.sitemapindex.sitemap) ? result.sitemapindex.sitemap : [result.sitemapindex.sitemap];
       totalItems = entries.length;
 
-      for (const entry of entries) {
-        if (!entry.loc) continue;
+      const results = await Promise.allSettled(entries.map(async (entry: any) => {
+        if (!entry.loc) return;
         const lastMod = parseDate(entry.lastmod);
 
         try {
@@ -111,19 +111,25 @@ async function processSitemap(data: any): Promise<void> {
             }, { priority: 10 });
           }
         } catch (dbErr) {
-          if (isNotFoundError(dbErr)) {
-            logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping crawl for this branch.`);
-            return;
-          }
+          if (isNotFoundError(dbErr)) throw { isNotFound: true };
           throw dbErr;
         }
+      }));
+
+      if (results.some(r => r.status === 'rejected' && (r.reason as any)?.isNotFound)) {
+        logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping crawl for this branch.`);
+        return;
+      }
+
+      for (const res of results) {
+        if (res.status === 'rejected') throw res.reason;
       }
     } else if (result.urlset?.url) {
       const entries = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
       totalItems = entries.length;
 
-      for (const entry of entries) {
-        if (!entry.loc || typeof entry.loc !== 'string') continue;
+      const results = await Promise.allSettled(entries.map(async (entry: any) => {
+        if (!entry.loc || typeof entry.loc !== 'string') return;
         const baseUrl = entry.loc.split('?')[0] ?? '';
         const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
         const lastMod = parseDate(entry.lastmod);
@@ -178,12 +184,18 @@ async function processSitemap(data: any): Promise<void> {
             }
           }
         } catch (dbErr) {
-          if (isNotFoundError(dbErr)) {
-            logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping branch processing.`);
-            return;
-          }
+          if (isNotFoundError(dbErr)) throw { isNotFound: true };
           throw dbErr;
         }
+      }));
+
+      if (results.some(r => r.status === 'rejected' && (r.reason as any)?.isNotFound)) {
+        logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping branch processing.`);
+        return;
+      }
+
+      for (const res of results) {
+        if (res.status === 'rejected') throw res.reason;
       }
     }
 
