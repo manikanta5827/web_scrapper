@@ -1,0 +1,344 @@
+{
+  "id": "64f69dd6-29ea-4f22-9e2f-ca80389cbeeb",
+  "prevId": "0c24cdcb-3426-4b7b-a0a3-f12066aa70d1",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.health_checks": {
+      "name": "health_checks",
+      "schema": "",
+      "columns": {
+        "service_name": {
+          "name": "service_name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last_seen": {
+          "name": "last_seen",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes'"
+        },
+        "concurrency": {
+          "name": "concurrency",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.sitemaps": {
+      "name": "sitemaps",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "root_id": {
+          "name": "root_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sitemap_url": {
+          "name": "sitemap_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_mod": {
+          "name": "last_mod",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_urls_found": {
+          "name": "total_urls_found",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'active'"
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes'"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes'"
+        }
+      },
+      "indexes": {
+        "sitemaps_root_id_idx": {
+          "name": "sitemaps_root_id_idx",
+          "columns": [
+            {
+              "expression": "root_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "sitemaps_parent_id_sitemaps_id_fk": {
+          "name": "sitemaps_parent_id_sitemaps_id_fk",
+          "tableFrom": "sitemaps",
+          "tableTo": "sitemaps",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "sitemaps_sitemap_url_unique": {
+          "name": "sitemaps_sitemap_url_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "sitemap_url"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.urls": {
+      "name": "urls",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "sitemap_id": {
+          "name": "sitemap_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "root_id": {
+          "name": "root_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_mod": {
+          "name": "last_mod",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "s3_url": {
+          "name": "s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "md_s3_url": {
+          "name": "md_s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'queued'"
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes'"
+        },
+        "last_scraped_at": {
+          "name": "last_scraped_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "(now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes'"
+        }
+      },
+      "indexes": {
+        "urls_root_id_idx": {
+          "name": "urls_root_id_idx",
+          "columns": [
+            {
+              "expression": "root_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "urls_status_idx": {
+          "name": "urls_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "urls_root_status_idx": {
+          "name": "urls_root_status_idx",
+          "columns": [
+            {
+              "expression": "root_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "urls_last_scraped_at_idx": {
+          "name": "urls_last_scraped_at_idx",
+          "columns": [
+            {
+              "expression": "last_scraped_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "urls_sitemap_id_sitemaps_id_fk": {
+          "name": "urls_sitemap_id_sitemaps_id_fk",
+          "tableFrom": "urls",
+          "tableTo": "sitemaps",
+          "columnsFrom": [
+            "sitemap_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "urls_url_unique": {
+          "name": "urls_url_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "url"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
