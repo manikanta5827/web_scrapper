@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>Scraper Home - All Scrapes</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { font-family: -apple-system, sans-serif; line-height: 1.6; color: #333; max-width: 1100px; margin: 0 auto; padding: 20px; background: #f8fafc; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
@@ -38,6 +37,7 @@
     <div class="worker-status">
       <div><span class="worker-dot"></span>Sitemap: <strong id="sitemapWorkers">0</strong></div>
       <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot"></span>Page: <strong id="pageWorkers">0</strong></div>
+      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #3b82f6;"></span>DB Total: <strong id="dbActive">0</strong></div>
     </div>
   </div>
 
@@ -60,21 +60,18 @@
         <tr>
           <th>Sitemap URL</th>
           <th>Created At</th>
+          <th>Total URLs</th>
           <th>Status</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody id="scrapeList">
-        <tr><td colspan="4" class="empty-state">Loading your scrapes...</td></tr>
+        <tr><td colspan="5" class="empty-state">Loading your scrapes...</td></tr>
       </tbody>
     </table>
   </div>
 
   <script>
-    const supabaseUrl = "{{supabaseUrl}}";
-    const supabaseKey = "{{supabaseAnonKey}}";
-    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
-
     async function startScrape() {
       const urlInput = document.getElementById('sitemapUrl');
       const msgDiv = document.getElementById('scrapeMsg');
@@ -103,7 +100,7 @@
           fetchScrapes();
           urlInput.value = '';
         } else {
-          throw new Error(data.error);
+          throw new Error(data.error || 'Failed to start scrape');
         }
       } catch (err) {
         msgDiv.style.background = '#fee2e2';
@@ -115,39 +112,45 @@
     }
 
     async function fetchScrapes() {
-      const { data, error } = await supabaseClient
-        .from('sitemaps')
-        .select('*')
-        .is('parent_id', null)
-        .order('created_at', { ascending: false });
+      try {
+        const res = await fetch('/api/sitemaps');
+        const data = await res.json();
 
-      if (error) {
-        console.error('Fetch Error:', error);
-        return;
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch sitemaps');
+
+        const list = document.getElementById('scrapeList');
+        if (data.length === 0) {
+          list.innerHTML = '<tr><td colspan="4" class="empty-state">No scrapes found. Start your first one above!</td></tr>';
+          return;
+        }
+
+        list.innerHTML = data.map(s => {
+          const sitemapUrl = s.sitemapUrl || s.sitemap_url;
+          const createdAt = s.createdAt || s.created_at;
+          const failureReason = s.failureReason || s.failure_reason;
+          const totalUrls = s.totalUrls || 0;
+          
+          return `
+            <tr>
+              <td>
+                <div style="max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <a href="/dashboard/${s.id}" class="scrape-link" title="${sitemapUrl}">${sitemapUrl}</a>
+                  ${s.status === 'failed' && failureReason ? `<span class="error-text">Reason: ${failureReason}</span>` : ''}
+                </div>
+              </td>
+              <td class="timestamp">${new Date(createdAt).toLocaleString()}</td>
+              <td><span class="badge" style="background: #ebf1ff; color: #2563eb;">${totalUrls.toLocaleString()}</span></td>
+              <td><span class="badge status-${s.status}">${s.status}</span></td>
+              <td style="display: flex; gap: 8px;">
+                <a href="/dashboard/${s.id}" class="btn-primary" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">View Detail</a>
+                <button onclick="deleteSitemap(${s.id})" style="padding: 6px 12px; font-size: 12px; cursor: pointer; background: #ef4444; color: white; border: none; border-radius: 4px;">Delete</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Fetch Error:', err);
       }
-
-      const list = document.getElementById('scrapeList');
-      if (data.length === 0) {
-        list.innerHTML = '<tr><td colspan="4" class="empty-state">No scrapes found. Start your first one above!</td></tr>';
-        return;
-      }
-
-      list.innerHTML = data.map(s => `
-        <tr>
-          <td>
-            <div style="max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-              <a href="/dashboard/${s.id}" class="scrape-link" title="${s.sitemap_url}">${s.sitemap_url}</a>
-              ${s.status === 'failed' && s.failure_reason ? `<span class="error-text">Reason: ${s.failure_reason}</span>` : ''}
-            </div>
-          </td>
-          <td class="timestamp">${new Date(s.created_at).toLocaleString()}</td>
-          <td><span class="badge status-${s.status}">${s.status}</span></td>
-          <td style="display: flex; gap: 8px;">
-            <a href="/dashboard/${s.id}" class="btn-primary" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">View Detail</a>
-            <button onclick="deleteSitemap(${s.id})" style="padding: 6px 12px; font-size: 12px; cursor: pointer; background: #ef4444; color: white; border: none; border-radius: 4px;">Delete</button>
-          </td>
-        </tr>
-      `).join('');
     }
 
     async function deleteSitemap(id) {
@@ -172,6 +175,9 @@
         const data = await res.json();
         document.getElementById('sitemapWorkers').innerText = data.workers.sitemap;
         document.getElementById('pageWorkers').innerText = data.workers.page;
+        if (data.db) {
+          document.getElementById('dbActive').innerText = data.db.totalActiveConnections;
+        }
       } catch (err) {
         console.error('Error updating worker status:', err);
       }

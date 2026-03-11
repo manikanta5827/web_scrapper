@@ -2,7 +2,6 @@
 <html>
 <head>
   <title>Scraper Dashboard - Root ID {{rootId}}</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     body { font-family: -apple-system, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f4f7f6; }
     .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
@@ -43,6 +42,7 @@
     <div class="worker-status">
       <div><span class="worker-dot"></span>Sitemap: <strong id="sitemapWorkers">0</strong></div>
       <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot"></span>Page: <strong id="pageWorkers">0</strong></div>
+      <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;"><span class="worker-dot" style="background: #3b82f6;"></span>DB Total: <strong id="dbActive">0</strong></div>
       <div style="border-left: 1px solid #e2e8f0; padding-left: 20px;">
         <span style="color: #64748b;">System RAM:</span> <strong id="systemRam">0 GB</strong>
         <span style="color: #64748b; margin-left: 10px;">Free:</span> <strong id="freeRam">0 GB</strong>
@@ -83,9 +83,6 @@
 
   <script>
     const rootId = "{{rootId}}";
-    const supabaseUrl = "{{supabaseUrl}}";
-    const supabaseKey = "{{supabaseAnonKey}}";
-    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
     let page = 0;
     const limit = 20;
@@ -119,6 +116,11 @@
         document.getElementById('sitemapWorkers').innerText = data.workers.sitemap;
         document.getElementById('pageWorkers').innerText = data.workers.page;
         
+        // Update DB
+        if (data.db) {
+          document.getElementById('dbActive').innerText = data.db.totalActiveConnections;
+        }
+
         // Update Memory
         if (data.system) {
           document.getElementById('systemRam').innerText = formatGB(data.system.totalMemory);
@@ -133,29 +135,23 @@
 
     async function fetchStats() {
       try {
-        // Parallel count queries for accuracy
-        const [totalRes, doneRes, failedRes, activeRes, sitemapsRes] = await Promise.all([
-          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId),
-          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'done'),
-          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'failed'),
-          supabaseClient.from('urls').select('*', { count: 'exact', head: true }).eq('root_id', rootId).eq('status', 'scraping'),
-          supabaseClient.from('sitemaps').select('*', { count: 'exact', head: true }).eq('root_id', rootId)
-        ]);
-
-        const total = totalRes.count || 0;
-        const done = doneRes.count || 0;
-        const failed = failedRes.count || 0;
-        const scraping = activeRes.count || 0;
-        const sitemapsCount = sitemapsRes.count || 0;
+        const res = await fetch(`/status/${rootId}`);
+        const data = await res.json();
         
-        // Everything else is considered "In Queue"
-        const queued = total - (done + failed + scraping);
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch stats');
+
+        const total = data.pages.total || 0;
+        const done = data.pages.done || 0;
+        const failed = data.pages.failed || 0;
+        const scraping = data.pages.scraping || 0;
+        const sitemapsCount = data.sitemaps || 0;
+        const queued = data.pages.queued || 0;
 
         document.getElementById('stats').innerHTML = `
           <div class="stat"><h3>Sub-Sitemaps</h3><p style="color: #8b5cf6">${sitemapsCount}</p></div>
           <div class="stat"><h3>Done</h3><p style="color: #10b981">${done}</p></div>
           <div class="stat"><h3>Scraping Pages</h3><p style="color: #3b82f6">${scraping}</p></div>
-          <div class="stat"><h3>Queued</h3><p>${queued >= 0 ? queued : 0}</p></div>
+          <div class="stat"><h3>Queued</h3><p>${queued}</p></div>
           <div class="stat"><h3>Failed</h3><p style="color: #ef4444">${failed}</p></div>
         `;
       } catch (err) { console.error('Stats Error:', err); }
@@ -164,35 +160,40 @@
     async function fetchTable() {
       const filter = document.getElementById('statusFilter').value;
       
-      let query = supabaseClient
-        .from('urls')
-        .select('*')
-        .eq('root_id', rootId);
+      try {
+        const res = await fetch(`/api/urls/${rootId}?page=${page}&limit=${limit}&status=${filter}`);
+        const result = await res.json();
+        
+        if (!res.ok) throw new Error(result.error || 'Failed to fetch table');
 
-      if (filter !== 'all') {
-        query = query.eq('status', filter);
+        const data = result.data;
+
+        document.querySelector('#urlTable tbody').innerHTML = data.map(u => {
+          const url = u.url;
+          const status = u.status;
+          const failureReason = u.failureReason || u.failure_reason;
+          const updatedAt = u.updatedAt || u.updated_at;
+          const s3Url = u.s3Url || u.s3_url;
+          const mdS3Url = u.mdS3Url || u.md_s3_url;
+
+          return `
+            <tr>
+              <td style="max-width:500px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <a href="${url}" target="_blank">${url}</a>
+                ${status === 'failed' && failureReason ? `<br><span style="color:#991b1b; font-size:12px; font-style:italic;">Reason: ${failureReason}</span>` : ''}
+              </td>
+              <td><span class="badge status-${status}">${status}</span></td>
+              <td style="color:#64748b; font-size:13px;">${new Date(updatedAt).toLocaleString()}</td>
+              <td style="display: flex; gap: 8px;">
+                ${s3Url ? `<a href="${s3Url}" target="_blank" class="scrape-link">HTML</a>` : '-'}
+                ${mdS3Url ? `<a href="${mdS3Url}" target="_blank" class="scrape-link">MD</a>` : ''}
+              </td>
+            </tr>
+          `;
+        }).join('') || '<tr><td colspan="4" style="text-align:center; padding: 40px; color: #64748b;">No URLs match this filter on this page.</td></tr>';
+      } catch (err) {
+        console.error('Table Error:', err);
       }
-
-      const { data, error } = await query
-        .order('updated_at', { ascending: false })
-        .range(page * limit, (page + 1) * limit - 1);
-
-      if (error) return console.error('Table Error:', error);
-
-      document.querySelector('#urlTable tbody').innerHTML = data.map(u => `
-        <tr>
-          <td style="max-width:500px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-            <a href="${u.url}" target="_blank">${u.url}</a>
-            ${u.status === 'failed' && u.failure_reason ? `<br><span style="color:#991b1b; font-size:12px; font-style:italic;">Reason: ${u.failure_reason}</span>` : ''}
-          </td>
-          <td><span class="badge status-${u.status}">${u.status}</span></td>
-          <td style="color:#64748b; font-size:13px;">${new Date(u.updated_at).toLocaleString()}</td>
-          <td style="display: flex; gap: 8px;">
-            ${u.s3_url ? `<a href="${u.s3_url}" target="_blank" class="scrape-link">HTML</a>` : '-'}
-            ${u.md_s3_url ? `<a href="${u.md_s3_url}" target="_blank" class="scrape-link">MD</a>` : ''}
-          </td>
-        </tr>
-      `).join('') || '<tr><td colspan="4" style="text-align:center; padding: 40px; color: #64748b;">No URLs match this filter on this page.</td></tr>';
     }
 
     function changePage(delta) {
@@ -202,9 +203,7 @@
     }
 
     // Initial load only
-    fetchStats();
-    fetchTable();
-    updateWorkerStatus();
+    refreshAll();
     setInterval(updateWorkerStatus, 5000);
   </script>
 </body>

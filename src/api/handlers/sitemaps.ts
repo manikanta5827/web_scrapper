@@ -1,13 +1,22 @@
 import { db } from '../../db/client';
-import { sitemaps } from '../../db/schema';
-import { eq, isNull, desc } from 'drizzle-orm';
+import { sitemaps, urls } from '../../db/schema';
+import { eq, isNull, desc, sql } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
 
 export async function handleGetSitemaps(): Promise<Response> {
   try {
-    const results = await db.select()
+    const results = await db.select({
+      id: sitemaps.id,
+      sitemapUrl: sitemaps.sitemapUrl,
+      status: sitemaps.status,
+      createdAt: sitemaps.createdAt,
+      failureReason: sitemaps.failureReason,
+      totalUrls: sql<number>`count(${urls.id})`.mapWith(Number),
+    })
       .from(sitemaps)
+      .leftJoin(urls, eq(urls.rootId, sitemaps.id))
       .where(isNull(sitemaps.parentId))
+      .groupBy(sitemaps.id)
       .orderBy(desc(sitemaps.createdAt));
 
     return new Response(JSON.stringify(results), {

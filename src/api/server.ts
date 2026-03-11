@@ -14,6 +14,11 @@ export function startServer() {
     async fetch(req) {
       const url = new URL(req.url);
 
+      // --- REDIRECT / to /dashboard ---
+      if (url.pathname === '/') {
+        return Response.redirect('/dashboard', 302);
+      }
+
       // --- DASHBOARD HTML (Index and Detail) ---
       if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
         return handleDashboard(req, url);

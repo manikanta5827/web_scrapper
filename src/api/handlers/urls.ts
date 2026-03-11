@@ -6,27 +6,27 @@ export async function handleUrls(req: Request, url: URL): Promise<Response> {
   const rootId = parseInt(url.pathname.split('/').pop() || '');
   if (isNaN(rootId)) return new Response('Invalid rootId', { status: 400 });
 
-  // Get pagination params
-  const page = parseInt(url.searchParams.get('page') || '1');
-  const limit = parseInt(url.searchParams.get('limit') || '50');
-  const offset = (page - 1) * limit;
+  // Get pagination and filter params
+  const page = parseInt(url.searchParams.get('page') || '0');
+  const limit = parseInt(url.searchParams.get('limit') || '20');
+  const statusFilter = url.searchParams.get('status') || 'all';
+  const offset = page * limit;
+
+  const conditions = [eq(urlsTable.rootId, rootId)];
+  if (statusFilter !== 'all') {
+    conditions.push(eq(urlsTable.status, statusFilter as any));
+  }
 
   // 1. Get total count for pagination UI
   const [totalResult] = await db
     .select({ total: countFn() })
     .from(urlsTable)
-    .where(and(
-      eq(urlsTable.rootId, rootId),
-      eq(urlsTable.status, 'done')
-    ));
+    .where(and(...conditions));
 
-  // 2. Get the actual "done" URLs with pagination
+  // 2. Get the actual URLs with pagination
   const results = await db.select()
     .from(urlsTable)
-    .where(and(
-      eq(urlsTable.rootId, rootId),
-      eq(urlsTable.status, 'done')
-    ))
+    .where(and(...conditions))
     .orderBy(desc(urlsTable.updatedAt))
     .limit(limit)
     .offset(offset);
@@ -37,7 +37,6 @@ export async function handleUrls(req: Request, url: URL): Promise<Response> {
       total: totalResult?.total,
       page,
       limit,
-      totalPages: Math.ceil((totalResult?.total || 0) / limit)
     }
   }), {
     headers: { 'Content-Type': 'application/json' },

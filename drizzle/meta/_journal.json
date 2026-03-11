@@ -50,6 +50,20 @@
       "when": 1773173186483,
       "tag": "0006_fine_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1773229415602,
+      "tag": "0007_unique_medusa",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773233969988,
+      "tag": "0008_aberrant_nemesis",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { config } from '../utils/config';
 import * as schema from './schema';
 import { logger } from '../utils/logger';
 
-const pool = new Pool({ 
+export const pool = new Pool({ 
   connectionString: config.databaseUrl,
   max: config.dbMaxConnections,
   connectionTimeoutMillis: config.dbConnectionTimeout,
