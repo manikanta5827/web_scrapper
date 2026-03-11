@@ -24,9 +24,6 @@ export async function handleGlobalStatus(): Promise<Response> {
     // Combine all
     const allPools: any[] = []; // Leaving empty to satisfy any frontend loop for now
 
-    // Log for debugging
-    logger.info(`Global Status Query Result (Active): ${JSON.stringify(activeStats)}`);
-
     const getStat = (name: string) => {
       const record = activeStats.find((s: any) => (s.serviceName === name || s.service_name === name));
       return record ? record.concurrency : 0;

@@ -4,48 +4,52 @@ if (!process.env.DATABASE_URL) {
 }
 
 export const config = {
-  // 1. Connection string for your local or remote PostgreSQL database
+  // Database connection string
   databaseUrl: (process.env.DATABASE_URL as string).replace(/\\\$/g, '$'),
 
-  // 2. The identity string sent to websites so they know who is scraping them
+  // Identity string for the scraper
   userAgent: 'Mozilla/5.0 (compatible; WebScraper/1.0)',
 
-  // 3. Maximum time (in milliseconds) to wait for a website to respond (30 seconds)
+  // Timeout for HTTP requests (30 seconds)
   timeout: 30000,
 
-  // 4. Concurrency settings for specialized workers
+  // Sitemap worker scaling parameters
   sitemapConcurrency: {
     min: 1,
     max: 10,
     scaleUpThreshold: 5,
     pollInterval: 10000,
+    batchSize: 1, // Sitemaps are heavy, process 1 by 1
   },
+  
+  // Page worker scaling parameters
   pageConcurrency: {
     min: 1,
     max: 50,
     scaleUpThreshold: 20,
     pollInterval: 5000,
+    batchSize: 10, // Pull 10 URLs at once for batch processing
   },
 
-  // 5. How many times to try scraping a URL again if it fails (network error, timeout, etc.)
+  // Max retry attempts for failed jobs
   retryLimit: 3,
 
-  // 6. How many seconds to wait before trying a failed job again
+  // Delay between retries in seconds
   retryDelay: 30,
 
-  // 8. The maximum number of text characters to save in the database per page (to save space)
+  // Max characters to extract per page
   maxContentLength: 100000,
 
-  // 9. When reading a sitemap, how many URLs to process in one internal batch for DB efficiency
+  // Number of items to process in a single DB batch
   batchSize: 500,
 
-  // 10. The environment mode: 'development' shows more logs, 'production' saves them to a file
+  // Runtime environment (development/production)
   env: process.env.NODE_ENV || 'development',
 
-  // 11. The filename where all system logs are stored
+  // Log output filename
   logFile: 'app.log',
   
-  // 12. S3 Storage for raw HTML
+  // S3 storage configuration
   s3: {
     region: process.env.AWS_REGION || 'ap-south-1',
     bucket: process.env.AWS_BUCKET_NAME || 'web-scraper-raw-html',
@@ -53,13 +57,9 @@ export const config = {
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
   },
 
-  // Connection Pool Settings (Optimized for Supabase Free Tier)
-  // Supabase Pooler (Port 6543) allows 200 client connections.
-  // The backend database allows 20 connections.
-  // We have 3 processes (Server, Sitemap Worker, Page Worker).
-  // Total client connections = 3 * (5 + 10) = 45 (Safe)
+  // Database connection pool settings (Optimized for Supabase)
   dbMaxConnections: 5,
   bossMaxConnections: 10,
-  dbConnectionTimeout: 60000, // 60 seconds
-  dbIdleTimeout: 30000,       // 30 seconds
+  dbConnectionTimeout: 60000,
+  dbIdleTimeout: 30000,
 } as const;

@@ -45,8 +45,9 @@ export async function handleScrape(req: Request): Promise<Response> {
       });
     }
 
-    logger.info(`POST /scrape: Received request for ${sitemapUrl}`);
-    // add the sitemap to db and queue
+    logger.info(`Processing scrape request: ${sitemapUrl}`);
+    
+    // Register sitemap in database
     let [siteMap] = await db.insert(sitemaps).values({
       sitemapUrl,
       status: 'active',
@@ -64,7 +65,7 @@ export async function handleScrape(req: Request): Promise<Response> {
       });
     }
 
-    // If it was already a root or we just created it, ensure rootId is set
+    // Set rootId for the new sitemap if it's the top-level
     if (!siteMap.rootId) {
       const [updated] = await db.update(sitemaps)
         .set({ rootId: siteMap.id })
@@ -80,16 +81,17 @@ export async function handleScrape(req: Request): Promise<Response> {
       });
     }
 
+    // Hand off to the worker queue
     await boss.send('sitemap_queue', { 
       sitemapUrl: siteMap.sitemapUrl, 
       sitemapId: siteMap.id, 
       rootId: siteMap.rootId, 
       depth: 0 
     }, {
-      priority: 10, // Sitemaps get higher priority
+      priority: 10,
       retryLimit: config.retryLimit,
       retryDelay: config.retryDelay,
-      retryBackoff: true // Enable exponential backoff
+      retryBackoff: true
     });
 
     return new Response(JSON.stringify({ message: 'Accepted', id: siteMap.id, rootId: siteMap.rootId }), {
