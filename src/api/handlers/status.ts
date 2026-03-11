@@ -40,6 +40,15 @@ export async function handleGlobalStatus(): Promise<Response> {
       queueDbConnections = totalDbConnections; // Same DB
     }
 
+    // 3. Query Throughput (RPM - Records Per Minute)
+    // We count URLs finished (done/failed) in the last 60 seconds
+    const throughputResult = await db.execute(sql`
+      SELECT count(*) as count 
+      FROM urls 
+      WHERE last_scraped_at > ((now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes' - interval '1 minute')
+    `);
+    const rpm = parseInt(throughputResult.rows[0]?.count as string || '0');
+
     // Combine all
     const allPools: any[] = []; 
 
@@ -64,6 +73,10 @@ export async function handleGlobalStatus(): Promise<Response> {
       workers: {
         sitemap: sitemapWorker,
         page: pageWorker
+      },
+      throughput: {
+        rpm: rpm,
+        rps: parseFloat((rpm / 60).toFixed(2))
       },
       db: {
         totalActiveConnections: totalDbConnections,
