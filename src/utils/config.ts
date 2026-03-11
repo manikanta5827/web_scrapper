@@ -34,10 +34,10 @@ export const config = {
   retryDelay: 30,
 
   // 8. The maximum number of text characters to save in the database per page (to save space)
-  maxContentLength: 50000,
+  maxContentLength: 100000,
 
   // 9. When reading a sitemap, how many URLs to process in one internal batch for DB efficiency
-  batchSize: 100,
+  batchSize: 500,
 
   // 10. The environment mode: 'development' shows more logs, 'production' saves them to a file
   env: process.env.NODE_ENV || 'development',

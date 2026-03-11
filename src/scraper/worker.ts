@@ -30,7 +30,7 @@ function isNotFoundError(e: any): boolean {
 }
 
 /**
- * Helper to bulk insert and queue sitemaps
+ * Helper to bulk insert and queue sitemaps in chunks
  */
 async function bulkProcessSitemaps(
   entries: { loc: string; lastMod: Date | null }[],
@@ -40,41 +40,46 @@ async function bulkProcessSitemaps(
 ): Promise<void> {
   if (entries.length === 0) return;
 
-  const inserted = await db.insert(sitemaps)
-    .values(entries.map(e => ({
-      parentId,
-      rootId,
-      sitemapUrl: e.loc,
-      status: 'processing' as const,
-      lastMod: e.lastMod
-    })))
-    .onConflictDoUpdate({
-      target: sitemaps.sitemapUrl,
-      set: { updatedAt: new Date() }
-    })
-    .returning({ id: sitemaps.id, sitemapUrl: sitemaps.sitemapUrl });
+  // Chunk the entries to prevent DB/Memory issues
+  for (let i = 0; i < entries.length; i += config.batchSize) {
+    const chunk = entries.slice(i, i + config.batchSize);
+    
+    const inserted = await db.insert(sitemaps)
+      .values(chunk.map(e => ({
+        parentId,
+        rootId,
+        sitemapUrl: e.loc,
+        status: 'processing' as const,
+        lastMod: e.lastMod
+      })))
+      .onConflictDoUpdate({
+        target: sitemaps.sitemapUrl,
+        set: { updatedAt: new Date() }
+      })
+      .returning({ id: sitemaps.id, sitemapUrl: sitemaps.sitemapUrl });
 
-  const jobs = inserted.map(s => ({
-    data: {
-      sitemapUrl: s.sitemapUrl,
-      sitemapId: s.id,
-      rootId,
-      depth: depth + 1
-    },
-    options: { 
-      priority: 10,
-      retryLimit: config.retryLimit,
-      retryDelay: config.retryDelay,
-      retryBackoff: true
-    }
-  }));
+    const jobs = inserted.map(s => ({
+      data: {
+        sitemapUrl: s.sitemapUrl,
+        sitemapId: s.id,
+        rootId,
+        depth: depth + 1
+      },
+      options: { 
+        priority: 10,
+        retryLimit: config.retryLimit,
+        retryDelay: config.retryDelay,
+        retryBackoff: true
+      }
+    }));
 
-  await boss.insert('sitemap_queue', jobs);
-  logger.info(`Bulk discovered ${inserted.length} sitemaps`);
+    await boss.insert('sitemap_queue', jobs);
+    logger.info(`Bulk discovered chunk of ${inserted.length} sitemaps (Total: ${entries.length})`);
+  }
 }
 
 /**
- * Helper to bulk insert and queue URLs
+ * Helper to bulk insert and queue URLs in chunks
  */
 async function bulkProcessUrls(
   entries: { loc: string; lastMod: Date | null }[],
@@ -83,32 +88,37 @@ async function bulkProcessUrls(
 ): Promise<void> {
   if (entries.length === 0) return;
 
-  const inserted = await db.insert(urls)
-    .values(entries.map(e => ({
-      sitemapId,
-      rootId,
-      url: e.loc,
-      status: 'queued' as const,
-      lastMod: e.lastMod
-    })))
-    .onConflictDoUpdate({
-      target: urls.url,
-      set: { updatedAt: new Date() }
-    })
-    .returning({ id: urls.id, url: urls.url });
+  // Chunk the entries to prevent DB/Memory issues
+  for (let i = 0; i < entries.length; i += config.batchSize) {
+    const chunk = entries.slice(i, i + config.batchSize);
 
-  const jobs = inserted.map(u => ({
-    data: { url: u.url, sitemapId, rootId },
-    options: { 
-      priority: 1,
-      retryLimit: config.retryLimit,
-      retryDelay: config.retryDelay,
-      retryBackoff: true
-    }
-  }));
+    const inserted = await db.insert(urls)
+      .values(chunk.map(e => ({
+        sitemapId,
+        rootId,
+        url: e.loc,
+        status: 'queued' as const,
+        lastMod: e.lastMod
+      })))
+      .onConflictDoUpdate({
+        target: urls.url,
+        set: { updatedAt: new Date() }
+      })
+      .returning({ id: urls.id, url: urls.url });
 
-  await boss.insert('page_queue', jobs);
-  logger.info(`Bulk queued ${inserted.length} URLs for scraping`);
+    const jobs = inserted.map(u => ({
+      data: { url: u.url, sitemapId, rootId },
+      options: { 
+        priority: 1,
+        retryLimit: config.retryLimit,
+        retryDelay: config.retryDelay,
+        retryBackoff: true
+      }
+    }));
+
+    await boss.insert('page_queue', jobs);
+    logger.info(`Bulk queued chunk of ${inserted.length} URLs (Total: ${entries.length})`);
+  }
 }
 
 /**
