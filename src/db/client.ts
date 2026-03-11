@@ -13,32 +13,39 @@ export const pool = new Pool({
 
 export const db = drizzle(pool, { schema });
 
-// Project B (Queue DB) - Used only for connection count monitoring in Dashboard
-// pg-boss handles its own connection for worker logic
-export const queuePool = config.queueDatabaseUrl !== config.databaseUrl
-  ? new Pool({ 
-      connectionString: config.queueDatabaseUrl,
-      max: 2, // Low max, only for health checks/monitoring
-    })
-  : null;
+// Project B (Queue DB)
+export const queuePool = new Pool({ 
+  connectionString: config.queueDatabaseUrl,
+  max: 5, // Low max for monitoring/health checks
+});
 
 export async function checkConnection(): Promise<void> {
-  let retries = 5;
+  await Promise.all([
+    verifyPool(pool, 'Main Database'),
+    verifyPool(queuePool, 'Queue Database')
+  ]);
+}
+
+async function verifyPool(targetPool: Pool, name: string): Promise<void> {
+  let retries = 3;
   while (retries > 0) {
     try {
-      const client = await pool.connect();
+      const client = await targetPool.connect();
       client.release();
-      logger.info('Successfully connected to database');
+      logger.info(`Successfully connected to ${name}`);
       return;
     } catch (err) {
       retries--;
-      logger.warn(`DB connection failed. Retries left: ${retries}. ${err instanceof Error ? err.message : ''}`);
-      if (retries === 0) throw new Error('Database connection failed');
+      logger.warn(`${name} connection failed. Retries left: ${retries}. ${err instanceof Error ? err.message : ''}`);
+      if (retries === 0) throw new Error(`${name} connection failed`);
       await new Promise(r => setTimeout(r, 2000));
     }
   }
 }
 
 export async function closeDb(): Promise<void> {
-  await pool.end();
+  await Promise.all([
+    pool.end(),
+    queuePool.end()
+  ]);
 }

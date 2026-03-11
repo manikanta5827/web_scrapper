@@ -15,23 +15,19 @@ export async function handleGlobalStatus(): Promise<Response> {
     `);
     const totalDbConnections = parseInt(dbConnectionsResult.rows[0]?.count as string || '0');
 
-    // 2. Query Project B (Queue DB) connections if separate
+    // 2. Query Project B (Queue DB) connections
     let queueDbConnections = 0;
-    if (queuePool) {
-      const client = await queuePool.connect();
-      try {
-        const res = await client.query(`
-          SELECT count(*) as count 
-          FROM pg_stat_activity 
-          WHERE datname = current_database()
-          AND state IS NOT NULL
-        `);
-        queueDbConnections = parseInt(res.rows[0]?.count as string || '0');
-      } finally {
-        client.release();
-      }
-    } else {
-      queueDbConnections = totalDbConnections; // Same DB
+    const queueClient = await queuePool.connect();
+    try {
+      const res = await queueClient.query(`
+        SELECT count(*) as count 
+        FROM pg_stat_activity 
+        WHERE datname = current_database()
+        AND state IS NOT NULL
+      `);
+      queueDbConnections = parseInt(res.rows[0]?.count as string || '0');
+    } finally {
+      queueClient.release();
     }
 
     return new Response(JSON.stringify({
