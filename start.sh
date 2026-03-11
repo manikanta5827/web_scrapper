@@ -22,13 +22,12 @@ bun run db:push
 
 # 3. Start the Sitemap Worker in the background
 echo "Starting Sitemap Worker..."
-bun run start:worker:sitemap &
+bun run dist/worker-init.js sitemap &
 
 # 4. Start the Page Worker in the background
 echo "Starting Page Worker..."
-bun run start:worker:page &
+bun run dist/worker-init.js page &
 
 # 5. Start the API Server in the foreground
-# (This must be the last command so the container stays alive)
 echo "Starting API Server on port $PORT..."
-bun run start:server
+bun run dist/server-init.js
