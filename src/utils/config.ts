@@ -7,6 +7,9 @@ export const config = {
   // Database connection string
   databaseUrl: (process.env.DATABASE_URL as string).replace(/\\\$/g, '$'),
 
+  // Dedicated Queue Database (Project B)
+  queueDatabaseUrl: (process.env.QUEUE_DATABASE_URL || process.env.DATABASE_URL) as string,
+
   // Identity string for the scraper
   userAgent: 'Mozilla/5.0 (compatible; WebScraper/1.0)',
 
@@ -20,6 +23,7 @@ export const config = {
     scaleUpThreshold: 5,
     pollInterval: 10000,
     batchSize: 1, // Sitemaps are heavy, process 1 by 1
+    pollingIntervalSeconds: 5,
   },
   
   // Page worker scaling parameters
@@ -29,6 +33,7 @@ export const config = {
     scaleUpThreshold: 20,
     pollInterval: 5000,
     batchSize: 10, // Pull 10 URLs at once for batch processing
+    pollingIntervalSeconds: 5,
   },
 
   // Max retry attempts for failed jobs

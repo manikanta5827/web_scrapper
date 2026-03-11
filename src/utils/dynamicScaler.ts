@@ -12,6 +12,7 @@ export interface ScalerOptions {
   scaleUpThreshold: number;
   pollInterval?: number;
   batchSize?: number;
+  pollingIntervalSeconds?: number; // Internal pg-boss check interval in seconds
 }
 
 /**
@@ -54,11 +55,11 @@ export class DynamicScaler {
    * Initialize workers and start monitoring
    */
   async start() {
-    const { min, batchSize = 1, queueName } = this.options;
+    const { min, batchSize = 1, queueName, pollingIntervalSeconds = 5 } = this.options;
     
     if (min > 0) {
       const startPromises = Array.from({ length: min }).map(() => 
-        boss.work(queueName, { localConcurrency: 1, batchSize }, this.handler)
+        boss.work(queueName, { localConcurrency: 1, batchSize, pollingIntervalSeconds }, this.handler)
       );
       
       const ids = await Promise.all(startPromises);
@@ -67,7 +68,7 @@ export class DynamicScaler {
     }
 
     await this.updateGlobalCount();
-    logger.info(`[Scaler] Started ${this.options.serviceName} with ${this.currentConcurrency} workers`);
+    logger.info(`[Scaler] Started ${this.options.serviceName} with ${this.currentConcurrency} workers (polling: ${pollingIntervalSeconds}s)`);
 
     this.interval = setInterval(() => this.checkAndScale(), this.options.pollInterval || 30000);
   }
@@ -94,7 +95,7 @@ export class DynamicScaler {
    * Adjust worker count based on queue pressure
    */
   private async checkAndScale() {
-    const { queueName, max, min, scaleUpThreshold, batchSize = 1 } = this.options;
+    const { queueName, max, min, scaleUpThreshold, batchSize = 1, pollingIntervalSeconds = 5 } = this.options;
     
     try {
       const stats = await boss.getQueueStats(queueName);
@@ -108,7 +109,7 @@ export class DynamicScaler {
         logger.debug(`[Scaler] ${queueName} Scaling UP: ${this.currentConcurrency} -> ${targetConcurrency}`);
         
         const addPromises = Array.from({ length: toAdd }).map(() => 
-          boss.work(queueName, { localConcurrency: 1, batchSize }, this.handler)
+          boss.work(queueName, { localConcurrency: 1, batchSize, pollingIntervalSeconds }, this.handler)
         );
         
         const newIds = await Promise.all(addPromises);

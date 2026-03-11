@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 // pg-boss can take constructor options. 
 // We keep 'max' conservative to prevent saturating the Supabase pool.
 export const boss = new PgBoss({
-  connectionString: config.databaseUrl,
+  connectionString: config.queueDatabaseUrl,
   max: config.bossMaxConnections,
 });
 
