@@ -42,9 +42,9 @@ COPY start.sh ./
 ENV NODE_ENV=production
 ENV PORT=10000
 
-# Make the start script executable while still root
+# Make the start script executable and prepare logs directory
 USER root
-RUN chmod +x start.sh
+RUN mkdir -p logs && chown -R bun:bun /app && chmod +x start.sh
 
 # Security: Run as non-root user
 USER bun
