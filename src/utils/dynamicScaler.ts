@@ -2,6 +2,7 @@ import { boss } from '../queue/boss';
 import { logger } from './logger';
 import { db } from '../db/client';
 import { healthChecks } from '../db/schema';
+import { getISTDate } from './time';
 
 export interface ScalerOptions {
   queueName: string;
@@ -33,13 +34,13 @@ export class DynamicScaler {
         .values({ 
           serviceName: this.options.serviceName, 
           concurrency: this.currentConcurrency,
-          lastSeen: new Date()
+          lastSeen: getISTDate()
         })
         .onConflictDoUpdate({
           target: healthChecks.serviceName,
           set: { 
             concurrency: this.currentConcurrency,
-            lastSeen: new Date()
+            lastSeen: getISTDate()
           }
         });
     } catch (err) {

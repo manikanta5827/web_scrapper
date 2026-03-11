@@ -1,6 +1,9 @@
 import { pgTable, serial, text, timestamp, integer, index } from 'drizzle-orm/pg-core';
 import { type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+
+const istNow = sql`(now() AT TIME ZONE 'UTC') + interval '5 hours 30 minutes'`;
 
 export const sitemaps = pgTable('sitemaps', {
   id: serial('id').primaryKey(),
@@ -11,8 +14,8 @@ export const sitemaps = pgTable('sitemaps', {
   totalUrlsFound: integer('total_urls_found').default(0),
   status: text('status', { enum: ['active', 'processing', 'failed'] }).default('active'),
   failureReason: text('failure_reason'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').default(istNow).notNull(),
+  updatedAt: timestamp('updated_at').default(istNow).notNull(),
 }, (table) => {
   return {
     rootIdIdx: index('sitemaps_root_id_idx').on(table.rootId),
@@ -29,9 +32,9 @@ export const urls = pgTable('urls', {
   mdS3Url: text('md_s3_url'), // Link to cleaned Markdown in S3
   status: text('status', { enum: ['queued', 'scraping', 'scraped', 'processing', 'done', 'failed'] }).default('queued'),
   failureReason: text('failure_reason'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').default(istNow).notNull(),
   lastScrapedAt: timestamp('last_scraped_at'),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').default(istNow).notNull(),
 }, (table) => {
   return {
     rootIdIdx: index('urls_root_id_idx').on(table.rootId),
@@ -42,7 +45,7 @@ export const urls = pgTable('urls', {
 
 export const healthChecks = pgTable('health_checks', {
   serviceName: text('service_name').primaryKey(), // e.g., 'unified-worker'
-  lastSeen: timestamp('last_seen').defaultNow().notNull(),
+  lastSeen: timestamp('last_seen').default(istNow).notNull(),
   concurrency: integer('concurrency').default(0).notNull(),
 });
 

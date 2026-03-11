@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
 import { boss } from '../../queue/boss';
 import { config } from '../../utils/config';
+import { getISTDate } from '../../utils/time';
 
 export async function handleScrape(req: Request): Promise<Response> {
   try {
@@ -52,7 +53,7 @@ export async function handleScrape(req: Request): Promise<Response> {
     })
     .onConflictDoUpdate({
       target: sitemaps.sitemapUrl,
-      set: { status: 'active', updatedAt: new Date() }
+      set: { status: 'active', updatedAt: getISTDate() }
     })
     .returning();
 

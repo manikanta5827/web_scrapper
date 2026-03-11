@@ -10,14 +10,18 @@ import { parseStringPromise } from 'xml2js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { uploadToS3 } from '../utils/uploadS3';
 import { DynamicScaler } from '../utils/dynamicScaler';
+import { getISTDate } from '../utils/time';
 
 /**
- * Helper to parse date safely
+ * Helper to parse date safely and convert to IST
  */
 function parseDate(dateStr: any): Date | null {
   if (!dateStr || typeof dateStr !== 'string') return null;
   const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
+  if (isNaN(d.getTime())) return null;
+  
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  return new Date(d.getTime() + istOffset);
 }
 
 /**
@@ -248,7 +252,7 @@ async function processSitemap(data: any): Promise<void> {
 
     try {
       await db.update(sitemaps)
-        .set({ status: 'active', totalUrlsFound: totalItems, updatedAt: new Date() })
+        .set({ status: 'active', totalUrlsFound: totalItems, updatedAt: getISTDate() })
         .where(eq(sitemaps.id, sitemapId));
     } catch (dbErr) {
       if (isNotFoundError(dbErr)) return;
@@ -278,7 +282,7 @@ async function processPage(data: any, jobId: string): Promise<void> {
     try {
       logger.info(`[Page Worker ${jobId}] Scraping: ${url}`);
       const [updated] = await db.update(urls)
-        .set({ status: 'scraping', updatedAt: new Date() })
+        .set({ status: 'scraping', updatedAt: getISTDate() })
         .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)))
         .returning();
       
@@ -327,8 +331,8 @@ async function processPage(data: any, jobId: string): Promise<void> {
             s3Url,
             mdS3Url,
             status: 'done',
-            lastScrapedAt: new Date(),
-            updatedAt: new Date(),
+            lastScrapedAt: getISTDate(),
+            updatedAt: getISTDate(),
           })
           .where(and(eq(urls.url, url), eq(urls.sitemapId, sitemapId)));
         

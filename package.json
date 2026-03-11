@@ -25,6 +25,7 @@
     "start:worker:page": "bun worker-init.ts page",
     "queue:clear": "bun src/utils/clearQueue.ts",
     "db:clear": "bun src/utils/clearDb.ts",
+    "db:migrate-ist": "bun src/utils/migrateToIST.ts",
     "seed": "bun seed.ts",
     "system:clear": "bun run queue:clear && bun run db:clear",
     "type-check": "tsc --noEmit"
