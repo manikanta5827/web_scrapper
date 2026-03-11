@@ -1,4 +1,4 @@
-import { db } from '../../db/client';
+import { db, queuePool } from '../../db/client';
 import { urls as urlsTable, healthChecks, sitemaps as sitemapsTable } from '../../db/schema';
 import { eq, count, and, isNotNull, sql } from 'drizzle-orm';
 import { logger } from '../../utils/logger';
@@ -12,7 +12,7 @@ export async function handleGlobalStatus(): Promise<Response> {
     // Filter for active workers only (seen in last 1 minute)
     const activeStats = stats.filter(s => new Date(s.lastSeen) > oneMinuteAgo);
     
-    // Option B: Direct DB query for total connections to this database
+    // 1. Query Project A (Main DB) connections
     const dbConnectionsResult = await db.execute(sql`
       SELECT count(*) as count 
       FROM pg_stat_activity 
@@ -21,8 +21,27 @@ export async function handleGlobalStatus(): Promise<Response> {
     `);
     const totalDbConnections = parseInt(dbConnectionsResult.rows[0]?.count as string || '0');
 
+    // 2. Query Project B (Queue DB) connections if separate
+    let queueDbConnections = 0;
+    if (queuePool) {
+      const client = await queuePool.connect();
+      try {
+        const res = await client.query(`
+          SELECT count(*) as count 
+          FROM pg_stat_activity 
+          WHERE datname = current_database()
+          AND state IS NOT NULL
+        `);
+        queueDbConnections = parseInt(res.rows[0]?.count as string || '0');
+      } finally {
+        client.release();
+      }
+    } else {
+      queueDbConnections = totalDbConnections; // Same DB
+    }
+
     // Combine all
-    const allPools: any[] = []; // Leaving empty to satisfy any frontend loop for now
+    const allPools: any[] = []; 
 
     const getStat = (name: string) => {
       const record = activeStats.find((s: any) => (s.serviceName === name || s.service_name === name));
@@ -48,6 +67,7 @@ export async function handleGlobalStatus(): Promise<Response> {
       },
       db: {
         totalActiveConnections: totalDbConnections,
+        queueActiveConnections: queueDbConnections,
         processPools: allPools
       },
       system: {

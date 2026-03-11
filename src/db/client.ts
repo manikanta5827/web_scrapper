@@ -13,6 +13,15 @@ export const pool = new Pool({
 
 export const db = drizzle(pool, { schema });
 
+// Project B (Queue DB) - Used only for connection count monitoring in Dashboard
+// pg-boss handles its own connection for worker logic
+export const queuePool = config.queueDatabaseUrl !== config.databaseUrl
+  ? new Pool({ 
+      connectionString: config.queueDatabaseUrl,
+      max: 2, // Low max, only for health checks/monitoring
+    })
+  : null;
+
 export async function checkConnection(): Promise<void> {
   let retries = 5;
   while (retries > 0) {
