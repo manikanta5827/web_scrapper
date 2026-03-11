@@ -30,6 +30,78 @@ function isNotFoundError(e: any): boolean {
 }
 
 /**
+ * Helper to bulk insert and queue sitemaps
+ */
+async function bulkProcessSitemaps(
+  entries: { loc: string; lastMod: Date | null }[],
+  parentId: number,
+  rootId: number,
+  depth: number
+): Promise<void> {
+  if (entries.length === 0) return;
+
+  const inserted = await db.insert(sitemaps)
+    .values(entries.map(e => ({
+      parentId,
+      rootId,
+      sitemapUrl: e.loc,
+      status: 'processing' as const,
+      lastMod: e.lastMod
+    })))
+    .onConflictDoUpdate({
+      target: sitemaps.sitemapUrl,
+      set: { updatedAt: new Date() }
+    })
+    .returning({ id: sitemaps.id, sitemapUrl: sitemaps.sitemapUrl });
+
+  const jobs = inserted.map(s => ({
+    data: {
+      sitemapUrl: s.sitemapUrl,
+      sitemapId: s.id,
+      rootId,
+      depth: depth + 1
+    },
+    options: { priority: 10 }
+  }));
+
+  await boss.insert('sitemap_queue', jobs);
+  logger.info(`Bulk discovered ${inserted.length} sitemaps`);
+}
+
+/**
+ * Helper to bulk insert and queue URLs
+ */
+async function bulkProcessUrls(
+  entries: { loc: string; lastMod: Date | null }[],
+  sitemapId: number,
+  rootId: number
+): Promise<void> {
+  if (entries.length === 0) return;
+
+  const inserted = await db.insert(urls)
+    .values(entries.map(e => ({
+      sitemapId,
+      rootId,
+      url: e.loc,
+      status: 'queued' as const,
+      lastMod: e.lastMod
+    })))
+    .onConflictDoUpdate({
+      target: urls.url,
+      set: { updatedAt: new Date() }
+    })
+    .returning({ id: urls.id, url: urls.url });
+
+  const jobs = inserted.map(u => ({
+    data: { url: u.url, sitemapId, rootId },
+    options: { priority: 1 }
+  }));
+
+  await boss.insert('page_queue', jobs);
+  logger.info(`Bulk queued ${inserted.length} URLs for scraping`);
+}
+
+/**
  * Logic for processing sitemaps
  */
 async function processSitemap(data: any): Promise<void> {
@@ -77,125 +149,63 @@ async function processSitemap(data: any): Promise<void> {
 
     // handle sitemapindex
     if (result.sitemapindex?.sitemap) {
-      const entries = Array.isArray(result.sitemapindex.sitemap) ? result.sitemapindex.sitemap : [result.sitemapindex.sitemap];
+      const entries = (Array.isArray(result.sitemapindex.sitemap) ? result.sitemapindex.sitemap : [result.sitemapindex.sitemap])
+        .filter((e: any) => e.loc);
       totalItems = entries.length;
 
-      const results = await Promise.allSettled(entries.map(async (entry: any) => {
-        if (!entry.loc) return;
-        const lastMod = parseDate(entry.lastmod);
-
+      if (totalItems > 0) {
         try {
-          const [newSitemap] = await db.insert(sitemaps)
-            .values({ 
-              parentId: sitemapId, 
-              rootId: rootId,
-              sitemapUrl: entry.loc, 
-              status: 'processing',
-              lastMod: lastMod
-            })
-            .onConflictDoUpdate({ 
-              target: sitemaps.sitemapUrl, 
-              set: { updatedAt: new Date() }
-            })
-            .returning();
-
-          const sId = newSitemap?.id || (await db.select({ id: sitemaps.id }).from(sitemaps).where(eq(sitemaps.sitemapUrl, entry.loc)))[0]?.id;
-
-          if (sId) {
-            if (newSitemap) logger.info(`Discovered new sitemap: ${entry.loc}`);
-            await boss.send('sitemap_queue', { 
-              sitemapUrl: entry.loc, 
-              sitemapId: sId, 
-              rootId: rootId,
-              depth: depth + 1 
-            }, { priority: 10 });
-          }
+          const sitemapData = entries.map((entry: any) => ({
+            loc: entry.loc,
+            lastMod: parseDate(entry.lastmod)
+          }));
+          await bulkProcessSitemaps(sitemapData, sitemapId, rootId, depth);
         } catch (dbErr) {
-          if (isNotFoundError(dbErr)) throw { isNotFound: true };
+          if (isNotFoundError(dbErr)) {
+            logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping crawl for this branch.`);
+            return;
+          }
           throw dbErr;
         }
-      }));
-
-      if (results.some(r => r.status === 'rejected' && (r.reason as any)?.isNotFound)) {
-        logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping crawl for this branch.`);
-        return;
-      }
-
-      for (const res of results) {
-        if (res.status === 'rejected') throw res.reason;
       }
     } else if (result.urlset?.url) {
-      const entries = Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url];
+      const entries = (Array.isArray(result.urlset.url) ? result.urlset.url : [result.urlset.url])
+        .filter((e: any) => e.loc && typeof e.loc === 'string');
       totalItems = entries.length;
 
-      const results = await Promise.allSettled(entries.map(async (entry: any) => {
-        if (!entry.loc || typeof entry.loc !== 'string') return;
-        const baseUrl = entry.loc.split('?')[0] ?? '';
-        const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
-        const lastMod = parseDate(entry.lastmod);
+      if (totalItems > 0) {
+        const sitemapEntries: { loc: string; lastMod: Date | null }[] = [];
+        const urlEntries: { loc: string; lastMod: Date | null }[] = [];
+
+        for (const entry of entries) {
+          const baseUrl = entry.loc.split('?')[0] ?? '';
+          const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
+          const entryData = {
+            loc: entry.loc,
+            lastMod: parseDate(entry.lastmod)
+          };
+          
+          if (isSitemap) {
+            sitemapEntries.push(entryData);
+          } else {
+            urlEntries.push(entryData);
+          }
+        }
 
         try {
-          if (isSitemap) {
-            const [newSitemap] = await db.insert(sitemaps)
-              .values({ 
-                parentId: sitemapId, 
-                rootId: rootId,
-                sitemapUrl: entry.loc, 
-                status: 'processing',
-                lastMod: lastMod
-              })
-              .onConflictDoUpdate({ 
-                target: sitemaps.sitemapUrl, 
-                set: { updatedAt: new Date() }
-              })
-              .returning();
-            
-            const sId = newSitemap?.id || (await db.select({ id: sitemaps.id }).from(sitemaps).where(eq(sitemaps.sitemapUrl, entry.loc)))[0]?.id;
-
-            if (sId) {
-              if (newSitemap) logger.info(`Discovered nested sitemap: ${entry.loc}`);
-              await boss.send('sitemap_queue', { 
-                sitemapUrl: entry.loc, 
-                sitemapId: sId, 
-                rootId: rootId,
-                depth: depth + 1 
-              }, { priority: 10 });
-            }
-          } else {
-            const [newUrl] = await db.insert(urls)
-              .values({ 
-                sitemapId: sitemapId, 
-                rootId: rootId,
-                url: entry.loc, 
-                status: 'queued',
-                lastMod: lastMod
-              })
-              .onConflictDoUpdate({
-                target: urls.url,
-                set: { updatedAt: new Date() },
-              })
-              .returning();
-            
-            const uId = newUrl?.id || (await db.select({ id: urls.id }).from(urls).where(eq(urls.url, entry.loc)))[0]?.id;
-
-            if (uId) {
-              if (newUrl) logger.info(`Queued URL for scraping: ${entry.loc}`);
-              await boss.send('page_queue', { url: entry.loc, sitemapId: sitemapId, rootId: rootId }, { priority: 1 });
-            }
+          if (sitemapEntries.length > 0) {
+            await bulkProcessSitemaps(sitemapEntries, sitemapId, rootId, depth);
+          }
+          if (urlEntries.length > 0) {
+            await bulkProcessUrls(urlEntries, sitemapId, rootId);
           }
         } catch (dbErr) {
-          if (isNotFoundError(dbErr)) throw { isNotFound: true };
+          if (isNotFoundError(dbErr)) {
+            logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping branch processing.`);
+            return;
+          }
           throw dbErr;
         }
-      }));
-
-      if (results.some(r => r.status === 'rejected' && (r.reason as any)?.isNotFound)) {
-        logger.warn(`Parent sitemap ${sitemapId} was deleted, stopping branch processing.`);
-        return;
-      }
-
-      for (const res of results) {
-        if (res.status === 'rejected') throw res.reason;
       }
     }
 
