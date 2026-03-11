@@ -1,18 +1,16 @@
 {
   "name": "web_scrapper",
-  "module": "index.ts",
+  "module": "server-init.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^25.3.5",
+    "@types/node": "^24.0.0",
     "@types/pg": "^8.18.0",
     "@types/turndown": "^5.0.6",
     "@types/xml2js": "^0.4.14",
-    "drizzle-kit": "^0.31.9"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "drizzle-kit": "^0.31.9",
+    "typescript": "^5.7.3"
   },
   "scripts": {
     "db:migrate": "drizzle-kit migrate",
