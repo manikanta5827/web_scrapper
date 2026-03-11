@@ -11,7 +11,7 @@ turndownService.remove([
   'img', 'svg', 'canvas', 'video', 'audio', 'source', 'track',
   'form', 'button', 'input', 'select', 'option', 'textarea',
   'head', 'meta', 'link'
-]);
+] as any[]);
 
 /**
  * Converts HTML to clean, readable Markdown.

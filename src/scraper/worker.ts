@@ -313,52 +313,113 @@ async function scrapeUrl(url: string, sitemapId: number, rootId: number) {
   }
 }
 
+interface PageJob {
+  id: string;
+  data: {
+    url: string;
+    sitemapId: number;
+    rootId: number;
+  };
+}
+
+interface PageScrapeResult {
+  url: string;
+  sitemapId: number;
+  rootId: number;
+  status: 'done' | 'failed';
+  failureReason?: string;
+  s3Url?: string;
+  mdS3Url?: string;
+  lastScrapedAt?: Date;
+  updatedAt: Date;
+}
+
 /**
  * Logic for processing a batch of pages
  */
-async function processPageBatch(jobs: any[]): Promise<void> {
+async function processPageBatch(jobs: PageJob[]): Promise<void> {
   const batchId = jobs[0]?.id?.substring(0, 8) || 'unknown';
-  logger.info(`[Page Worker] Processing batch of ${jobs.length} jobs (Starting ID: ${batchId})`);
-
-  // 1. Mark all in batch as 'scraping' in ONE call
   const urlKeys = jobs.map(j => j.data.url);
-  try {
-    await db.update(urls)
-      .set({ status: 'scraping', updatedAt: getISTDate() })
-      .where(sql`${urls.url} IN (${sql.join(urlKeys.map(u => sql`${u}`), sql`, `)})`);
-  } catch (err) {
-    if (isNotFoundError(err)) return;
-    logger.error(`[Page Worker] Failed to update batch status to scraping: ${err}`);
-  }
 
-  // 2. Process all URLs in parallel (CURL + S3)
-  // We use Promise.all to run them concurrently within the batch
-  const results = await Promise.all(jobs.map(job => 
-    scrapeUrl(job.data.url, job.data.sitemapId, job.data.rootId)
-  ));
-
-  // 3. Sync all results to DB in ONE bulk "upsert"
   try {
-    await db.insert(urls)
-      .values(results)
-      .onConflictDoUpdate({
-        target: urls.url,
-        set: {
-          status: sql`excluded.status`,
-          failureReason: sql`excluded.failure_reason`,
-          s3Url: sql`excluded.s3_url`,
-          mdS3Url: sql`excluded.md_s3_url`,
-          lastScrapedAt: sql`excluded.last_scraped_at`,
-          updatedAt: sql`excluded.updated_at`
+    logger.info(`[Page Worker] Processing batch ${batchId} (${jobs.length} jobs)`);
+
+    // 1. Mark all as scraping in DB
+    try {
+      await db.update(urls)
+        .set({ status: 'scraping', updatedAt: getISTDate() })
+        .where(sql`${urls.url} IN (${sql.join(urlKeys.map(u => sql`${u}`), sql`, `)})`);
+    } catch (dbErr) {
+      if (!isNotFoundError(dbErr)) throw dbErr;
+    }
+
+    // 2. Process all in parallel (Settled ensures one failure doesn't stop the loop)
+    const settlements = await Promise.allSettled(jobs.map(job => 
+      scrapeUrl(job.data.url, job.data.sitemapId, job.data.rootId)
+    ));
+
+    const dbResults: PageScrapeResult[] = [];
+    const successJobIds: string[] = [];
+    const failureJobIds: { id: string; error: Error }[] = [];
+
+    // 3. Classify results
+    settlements.forEach((res, i) => {
+      const job = jobs[i];
+      if (!job) return;
+
+      if (res.status === 'fulfilled') {
+        const value = res.value as PageScrapeResult;
+        dbResults.push(value);
+        if (value.status === 'done') {
+          successJobIds.push(job.id);
+        } else {
+          failureJobIds.push({ id: job.id, error: new Error(value.failureReason || 'Unknown error') });
         }
-      });
-    
-    const succeeded = results.filter(r => r.status === 'done').length;
-    logger.info(`[Page Worker] Batch completed: ${succeeded} succeeded, ${results.length - succeeded} failed`);
+      } else {
+        // This handles actual code crashes/rejections in scrapeUrl
+        const error = res.reason instanceof Error ? res.reason : new Error(String(res.reason));
+        dbResults.push({
+          url: job.data.url,
+          sitemapId: job.data.sitemapId,
+          rootId: job.data.rootId,
+          status: 'failed' as const,
+          failureReason: error.message,
+          updatedAt: getISTDate()
+        });
+        failureJobIds.push({ id: job.id, error });
+      }
+    });
+
+    // 4. Bulk sync all results to DB (Successes and Failures)
+    if (dbResults.length > 0) {
+      await db.insert(urls)
+        .values(dbResults)
+        .onConflictDoUpdate({
+          target: urls.url,
+          set: {
+            status: sql`excluded.status`,
+            failureReason: sql`excluded.failure_reason`,
+            s3Url: sql`excluded.s3_url`,
+            mdS3Url: sql`excluded.md_s3_url`,
+            lastScrapedAt: sql`excluded.last_scraped_at`,
+            updatedAt: sql`excluded.updated_at`
+          }
+        });
+    }
+
+    // 5. Granularly complete or fail jobs in the queue
+    const queuePromises = [
+      ...successJobIds.map(id => boss.complete('page_queue', id)),
+      ...failureJobIds.map(f => boss.fail('page_queue', f.id, { message: f.error.message }))
+    ];
+
+    await Promise.all(queuePromises);
+    logger.info(`[Page Worker] Batch ${batchId} finished: ${successJobIds.length} OK, ${failureJobIds.length} Failed`);
+
   } catch (err) {
-    if (isNotFoundError(err)) return;
-    logger.error(`[Page Worker] Failed to sync batch results to DB: ${err}`);
-    throw err; // Re-throw to trigger pg-boss retry for the whole batch
+    logger.error(`[Page Worker] Fatal error in batch ${batchId}: ${err}`);
+    // Throwing here triggers a pg-boss retry for the entire batch
+    throw err;
   }
 }
 
