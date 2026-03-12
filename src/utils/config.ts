@@ -1,15 +1,14 @@
 import { SSMClient, GetParametersByPathCommand } from '@aws-sdk/client-ssm';
 import { logger } from './logger';
 
-// Bootstrap variables
+// These are the ONLY allowed process.env variables (Bootstrap only)
 const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
 const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || '';
 const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || '';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-/**
- * AWS SSM Client
- */
+logger.info(`[Config] Bootstrapping for environment: ${NODE_ENV}`);
+
 const ssmClient = new SSMClient({
   region: AWS_REGION,
   credentials: {
@@ -18,20 +17,17 @@ const ssmClient = new SSMClient({
   }
 });
 
-/**
- * Initial Config (Populated from local .env)
- */
 export const config = {
   env: NODE_ENV,
   port: process.env.PORT || '10000',
   
-  // Use local .env values as the primary source/fallback
-  databaseUrl: (process.env.DATABASE_URL || '').replace(/\\\$/g, '$'),
-  queueDatabaseUrl: process.env.QUEUE_DATABASE_URL || process.env.DATABASE_URL || '',
+  // These will be filled EXCLUSIVELY by SSM
+  databaseUrl: '',
+  queueDatabaseUrl: '',
   
   s3: {
     region: AWS_REGION,
-    bucket: process.env.AWS_BUCKET_NAME || '',
+    bucket: '', 
     accessKeyId: AWS_ACCESS_KEY_ID,
     secretAccessKey: AWS_SECRET_ACCESS_KEY
   },
@@ -39,7 +35,7 @@ export const config = {
   // Dynamic Settings (Defaults)
   userAgent: 'Mozilla/5.0 (compatible; WebScraper/1.0)',
   timeout: 30000,
-  enableS3Upload: process.env.NODE_ENV !== 'development', // Default: off in dev
+  enableS3Upload: false, 
   sitemapConcurrency: {
     min: 1,
     max: 5,
@@ -68,18 +64,13 @@ export const config = {
   logFile: 'logs/app.log',
 };
 
-/**
- * Hydrate from AWS SSM (Overlays on top of local .env)
- */
 export async function hydrateConfig(): Promise<void> {
-  // Skip SSM if credentials are missing (e.g. local dev without AWS)
-  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    logger.info('[Config] AWS Credentials missing. Skipping SSM hydration, using local .env.');
-    return;
-  }
-
   const path = `/web-scraper/${config.env}/`;
   
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+    throw new Error(`[Config] FATAL: AWS Credentials missing. Cannot fetch config from ${path}`);
+  }
+
   try {
     const command = new GetParametersByPathCommand({
       Path: path,
@@ -90,8 +81,7 @@ export async function hydrateConfig(): Promise<void> {
     const response = await ssmClient.send(command);
     
     if (!response.Parameters || response.Parameters.length === 0) {
-      logger.info(`[Config] No parameters found in SSM path "${path}". Staying with local .env.`);
-      return;
+      throw new Error(`[Config] FATAL: No parameters found in SSM path "${path}"`);
     }
 
     for (const param of response.Parameters) {
@@ -102,19 +92,23 @@ export async function hydrateConfig(): Promise<void> {
         try {
           Object.assign(config, JSON.parse(param.Value));
         } catch (e) {
-          logger.error(`[Config] Failed to parse JSON config from SSM: ${e}`);
+          logger.error(`[Config] Failed to parse JSON config: ${e}`);
         }
         continue;
       }
 
-      // Map critical vars
       if (key === 'DATABASE_URL') config.databaseUrl = param.Value.replace(/\\\$/g, '$');
       if (key === 'QUEUE_DATABASE_URL') config.queueDatabaseUrl = param.Value;
       if (key === 'AWS_BUCKET_NAME') config.s3.bucket = param.Value;
     }
 
-    logger.info(`[Config] Successfully overlaid SSM settings from "${path}"`);
+    logger.info(`[Config] Successfully hydrated from AWS SSM path "${path}"`);
+    
+    if (!config.databaseUrl) {
+      throw new Error(`[Config] FATAL: DATABASE_URL not found in SSM path "${path}"`);
+    }
   } catch (error) {
-    logger.warn(`[Config] SSM hydration failed: ${error instanceof Error ? error.message : 'Unknown'}. Using local .env.`);
+    logger.error(`[Config] Hydration failed: ${error instanceof Error ? error.message : 'Unknown'}`);
+    process.exit(1); // Stop app if config cannot be loaded
   }
 }

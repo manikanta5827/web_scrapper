@@ -1,6 +1,7 @@
 # Stage 1: Build & Bundle
 FROM oven/bun:1 AS builder
 WORKDIR /app
+ENV NODE_ENV=production
 
 # Cache dependencies
 COPY package.json bun.lock ./
