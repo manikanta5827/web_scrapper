@@ -2,7 +2,7 @@
 # Exit on any error
 set -e
 
-echo "Starting Scraper Multi-Process Service..."
+echo "Starting Optimized Multi-Service App..."
 
 # 1. Validate DATABASE_URL isn't a placeholder
 if [[ "$DATABASE_URL" == *"replace-with-your-supabase-url"* ]]; then
@@ -16,18 +16,10 @@ if [[ "$QUEUE_DATABASE_URL" == *"replace-with-your-supabase-queue-url"* ]]; then
   exit 1
 fi
 
-# 2. Run database migrations/sync
+# 2. Run database sync
 echo "Running database sync..."
 bun run db:push
 
-# 3. Start the Sitemap Worker in the background
-echo "Starting Sitemap Worker..."
-bun run dist/worker-init.js sitemap &
-
-# 4. Start the Page Worker in the background
-echo "Starting Page Worker..."
-bun run dist/worker-init.js page &
-
-# 5. Start the API Server in the foreground
-echo "Starting API Server on port $PORT..."
-bun run dist/server-init.js
+# 3. Start the combined application in the foreground
+echo "Starting Combined API and Workers..."
+bun run app.js
