@@ -10,11 +10,10 @@ RUN bun install --frozen-lockfile
 # Copy source
 COPY . .
 
-# Bundle everything into a single file for maximum efficiency
-# This minimizes file system I/O and memory overhead
-RUN bun build ./combined-init.ts --outdir ./dist --target node
+# Bundle everything into a single file
+RUN bun build ./combined-init.ts --outfile ./dist/app.js --target node
 
-# Stage 2: Production Dependencies (only for drizzle-kit push)
+# Stage 2: Production Dependencies (needed for drizzle-kit push)
 FROM oven/bun:1 AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -25,7 +24,7 @@ FROM oven/bun:1-slim
 WORKDIR /app
 
 # Copy the bundle
-COPY --from=builder /app/dist/combined-init.js ./app.js
+COPY --from=builder /app/dist/app.js ./app.js
 
 # Copy essential files for drizzle-kit push in start.sh
 COPY --from=deps /app/node_modules ./node_modules
@@ -33,7 +32,7 @@ COPY package.json drizzle.config.ts ./
 COPY drizzle ./drizzle
 COPY src/db/schema.ts ./src/db/schema.ts
 COPY src/api/*.html ./src/api/
-COPY fetch-ssm-vars.ts start.sh ./
+COPY start.sh ./
 
 # Set environment
 ENV NODE_ENV=production
