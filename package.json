@@ -1,26 +1,22 @@
 {
   "name": "web_scrapper",
-  "module": "server-init.ts",
+  "module": "combined-init.ts",
   "type": "module",
   "private": true,
   "scripts": {
     "dev": "bun --hot combined-init.ts",
     "build": "bun build combined-init.ts --outfile app.js",
     "start": "bun app.js",
-    "db:migrate": "drizzle-kit migrate",
-    "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push --force",
     "db:studio": "drizzle-kit studio",
     "queue:clear": "bun src/utils/clearQueue.ts",
     "db:clear": "bun src/utils/clearDb.ts",
-    "db:migrate-ist": "bun src/utils/migrateToIST.ts",
     "seed": "bun seed.ts",
     "system:clear": "bun run queue:clear && bun run db:clear",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1005.0",
-    "@aws-sdk/client-ssm": "3.1005.0",
     "axios": "^1.13.6",
     "drizzle-kit": "^0.31.9",
     "drizzle-orm": "^0.45.1",

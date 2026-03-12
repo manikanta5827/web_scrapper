@@ -1,110 +1,117 @@
 import { boss } from '../queue/boss';
 import { logger } from './logger';
 
-export interface ScalerOptions {
-  queueName: string;
-  serviceName: string; 
-  min: number;
-  max: number;
-  scaleUpThreshold: number;
-  scalerCheckIntervalMs?: number;
-  batchSize?: number;
-  workerFetchIntervalSeconds?: number; 
-}
-
 /**
- * Manages horizontal scaling of workers by adding/removing registrations.
+ * Manages horizontal scaling of workers by adding/removing registrations
+ * based on queue pressure.
  */
 export class DynamicScaler {
-  private workerIds: string[] = [];
-  private currentConcurrency: number = 0;
-  private interval: NodeJS.Timeout | null = null;
+  private activeWorkers: string[] = [];
+  private isScaling = false;
 
   constructor(
-    private options: ScalerOptions,
-    private handler: (jobs: any[]) => Promise<void>
+    private queueName: string,
+    private workerFn: (jobs: any[]) => Promise<void>,
+    private config: {
+      min: number;
+      max: number;
+      scaleUpThreshold: number;
+      batchSize: number;
+      workerFetchIntervalSeconds: number;
+      scalerCheckIntervalMs: number;
+    }
   ) {}
 
   /**
-   * Initialize workers and start monitoring
+   * Adds a new worker registration to pg-boss.
+   * Each registration acts as an independent "fetcher" loop.
    */
-  async start() {
-    const { min, batchSize = 1, queueName, workerFetchIntervalSeconds = 10 } = this.options;
-    
-    if (min > 0) {
-      const startPromises = Array.from({ length: min }).map(() => 
-        boss.work(queueName, { 
-          localConcurrency: 1, 
-          batchSize, 
-          pollingIntervalSeconds: workerFetchIntervalSeconds 
-        }, this.handler)
-      );
-      
-      const ids = await Promise.all(startPromises);
-      this.workerIds.push(...ids.filter((id): id is string => !!id));
-      this.currentConcurrency = this.workerIds.length;
-    }
+  private async addWorker() {
+    if (this.activeWorkers.length >= this.config.max) return;
 
-    logger.info(`[Scaler] Started ${this.options.serviceName} with ${this.currentConcurrency} workers (fetch interval: ${workerFetchIntervalSeconds}s)`);
-
-    this.interval = setInterval(() => this.checkAndScale(), this.options.scalerCheckIntervalMs || 30000);
-  }
-
-  /**
-   * Stop all workers and monitoring
-   */
-  async stop() {
-    if (this.interval) clearInterval(this.interval);
-    
-    const stopPromises = this.workerIds.map(id => 
-      boss.offWork(this.options.queueName, { id })
-    );
-    
-    await Promise.all(stopPromises);
-    
-    this.workerIds = [];
-    this.currentConcurrency = 0;
-    logger.info(`[Scaler] Stopped ${this.options.serviceName}`);
-  }
-
-  /**
-   * Adjust worker count based on queue pressure
-   */
-  private async checkAndScale() {
-    const { queueName, max, min, scaleUpThreshold, batchSize = 1, workerFetchIntervalSeconds = 10 } = this.options;
-    
     try {
-      const stats = await boss.getQueueStats(queueName);
-      const queueSize = stats.queuedCount;
-      
-      let targetConcurrency = Math.ceil(queueSize / scaleUpThreshold);
-      targetConcurrency = Math.max(min, Math.min(max, targetConcurrency));
+      const workerId = await boss.work(this.queueName, {
+        batchSize: this.config.batchSize,
+        pollingIntervalSeconds: this.config.workerFetchIntervalSeconds
+      }, this.workerFn);
 
-      if (targetConcurrency > this.currentConcurrency) {
-        const toAdd = targetConcurrency - this.currentConcurrency;
-        logger.debug(`[Scaler] ${queueName} Scaling UP: ${this.currentConcurrency} -> ${targetConcurrency}`);
-        
-        const addPromises = Array.from({ length: toAdd }).map(() => 
-          boss.work(queueName, { 
-            localConcurrency: 1, 
-            batchSize, 
-            pollingIntervalSeconds: workerFetchIntervalSeconds 
-          }, this.handler)
-        );
-        
-        const newIds = await Promise.all(addPromises);
-        this.workerIds.push(...newIds.filter((id): id is string => !!id));
-        this.currentConcurrency = this.workerIds.length;
-      } else if (targetConcurrency < this.currentConcurrency && this.currentConcurrency > min) {
-        const toRemove = this.currentConcurrency - targetConcurrency;
-        logger.debug(`[Scaler] ${queueName} Scaling DOWN: ${this.currentConcurrency} -> ${targetConcurrency}`);
-        
-        const removeIds = this.workerIds.splice(-toRemove);
-        await Promise.all(removeIds.map(id => boss.offWork(queueName, { id })));
-        this.currentConcurrency = this.workerIds.length;
+      if (workerId) {
+        this.activeWorkers.push(workerId);
+        logger.info(`[Scaler] ${this.queueName} scaled UP: ${this.activeWorkers.length} workers.`);
       }
     } catch (err) {
-      logger.error(`[Scaler] ${queueName} scaling failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+      logger.error(`[Scaler] ${this.queueName} failed to add worker: ${err}`);
     }
+  }
+
+  /**
+   * Removes the most recently added worker registration.
+   */
+  private async removeWorker() {
+    if (this.activeWorkers.length <= this.config.min) return;
+    const workerId = this.activeWorkers.pop();
+
+    try {
+      if (workerId) {
+        await boss.offWork(this.queueName, { id: workerId });
+        logger.info(`[Scaler] ${this.queueName} scaled DOWN: ${this.activeWorkers.length} workers.`);
+      }
+    } catch (err) {
+      logger.error(`[Scaler] ${this.queueName} failed to remove worker: ${err}`);
+    }
+  }
+
+  /**
+   * Starts the initial workers and the monitoring loop.
+   */
+  public async init() {
+    logger.info(`[Scaler] Initializing ${this.queueName} with ${this.config.min} workers.`);
+    for (let i = 0; i < this.config.min; i++) {
+      await this.addWorker();
+    }
+
+    // --- SCALING MONITORING LOOP ---
+    // Runs periodically to adjust worker power based on current queue depth.
+    setInterval(async () => {
+      // 1. Prevent overlapping scaling operations
+      if (this.isScaling) return;
+      this.isScaling = true;
+
+      try {
+        // 2. Fetch current Queue Pressure
+        const stats = await boss.getQueueStats(this.queueName);
+        const waitingJobs = stats.queuedCount;
+        const currentWorkerCount = this.activeWorkers.length;
+
+        // 3. SCALE UP LOGIC:
+        // If waiting jobs exceed threshold, calculate how many workers are needed.
+        if (waitingJobs > this.config.scaleUpThreshold && currentWorkerCount < this.config.max) {
+          const targetCount = Math.min(
+            this.config.max,
+            Math.ceil(waitingJobs / this.config.scaleUpThreshold)
+          );
+          
+          const toAdd = targetCount - currentWorkerCount;
+          if (toAdd > 0) {
+            logger.info(`[Scaler] ${this.queueName} pressure high (${waitingJobs} jobs). Scaling to ${targetCount} workers.`);
+            for (let i = 0; i < toAdd; i++) {
+              await this.addWorker();
+            }
+          }
+        } 
+        // 4. SCALE DOWN LOGIC:
+        // If queue is empty, reduce back to minimum workers to save resources.
+        else if (waitingJobs === 0 && currentWorkerCount > this.config.min) {
+          logger.info(`[Scaler] ${this.queueName} idle. Scaling down to ${this.config.min} workers.`);
+          while (this.activeWorkers.length > this.config.min) {
+            await this.removeWorker();
+          }
+        }
+      } catch (err) {
+        logger.error(`[Scaler] ${this.queueName} scaling monitor failed: ${err}`);
+      } finally {
+        this.isScaling = false;
+      }
+    }, this.config.scalerCheckIntervalMs);
   }
 }

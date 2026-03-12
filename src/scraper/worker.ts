@@ -8,16 +8,18 @@ import { processPageBatch } from './page-processor';
  * Start the Sitemap Worker
  */
 export async function startSitemapWorker(): Promise<void> {
-  const scaler = new DynamicScaler({
-    queueName: 'sitemap_queue',
-    serviceName: 'sitemap-worker',
-    ...config.sitemapConcurrency,
-  }, async (jobs: any[]) => {
-    // Sitemaps are processed one by one (batchSize: 1)
-    await processSitemap(jobs[0].data);
-  });
+  const scaler = new DynamicScaler(
+    'sitemap_queue',
+    async (jobs: any[]) => {
+      // Sitemaps are processed one by one (batchSize: 1)
+      if (jobs.length > 0) {
+        await processSitemap(jobs[0].data);
+      }
+    },
+    config.sitemapConcurrency
+  );
 
-  await scaler.start();
+  await scaler.init();
   logger.info(`Sitemap worker initialized with dynamic scaling`);
 }
 
@@ -25,14 +27,14 @@ export async function startSitemapWorker(): Promise<void> {
  * Start the Page Worker
  */
 export async function startPageWorker(): Promise<void> {
-  const scaler = new DynamicScaler({
-    queueName: 'page_queue',
-    serviceName: 'page-worker',
-    ...config.pageConcurrency,
-  }, async (jobs: any[]) => {
-    await processPageBatch(jobs);
-  });
+  const scaler = new DynamicScaler(
+    'page_queue',
+    async (jobs: any[]) => {
+      await processPageBatch(jobs);
+    },
+    config.pageConcurrency
+  );
 
-  await scaler.start();
+  await scaler.init();
   logger.info(`Page worker initialized with dynamic scaling`);
 }

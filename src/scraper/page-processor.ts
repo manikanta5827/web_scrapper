@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { db } from '../db/client';
 import { urls } from '../db/schema';
-import { sql } from 'drizzle-orm';
+import { sql, and, eq } from 'drizzle-orm';
 import { boss } from '../queue/boss';
 import { config } from '../utils/config';
 import { extract } from './extractor';
@@ -64,31 +64,33 @@ async function scrapeUrl(url: string, sitemapId: number, rootId: number): Promis
 
 /**
  * Logic for processing a batch of pages
- * Using p-limit to control concurrency within the batch (max 20)
  */
 export async function processPageBatch(jobs: PageJob[]): Promise<void> {
   if (jobs.length === 0) return;
   
   const batchId = jobs[0]?.id?.substring(0, 8) || 'unknown';
   const urlKeys = jobs.map(j => j.data.url);
-  const limit = pLimit(20); // Internal concurrency limit of 20
+  const limit = pLimit(config.pageConcurrency.internalLimit);
+
+  // SELF-TERMINATION TIMER: Using dynamic config
+  const timeoutPromise = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error(`Batch Timeout (${config.pageConcurrency.batchTimeoutMs}ms limit exceeded)`)), config.pageConcurrency.batchTimeoutMs)
+  );
 
   try {
-    logger.info(`[Page Worker] Processing batch ${batchId} (${jobs.length} jobs) with internal limit of 20`);
+    logger.info(`[Page Worker] Processing batch ${batchId} (${jobs.length} jobs)`);
 
-    // 1. Initial status update (Batch)
-    try {
-      await db.update(urls)
-        .set({ status: 'scraping', updatedAt: new Date() })
-        .where(sql`${urls.url} IN (${sql.join(urlKeys.map(u => sql`${u}`), sql`, `)})`);
-    } catch (dbErr) {
-      if (!isNotFoundError(dbErr)) logger.error(`[Page Worker] Status update failed: ${dbErr}`);
-    }
+    // 1. Initial status update
+    await db.update(urls)
+      .set({ status: 'scraping', updatedAt: new Date() })
+      .where(sql`${urls.url} IN (${sql.join(urlKeys.map(u => sql`${u}`), sql`, `)})`);
 
-    // 2. Parallel Processing with p-limit
-    const settlements = await Promise.allSettled(jobs.map(job => 
+    // 2. Parallel Processing (Race against the timeout)
+    const scrapePromise = Promise.allSettled(jobs.map(job => 
       limit(() => scrapeUrl(job.data.url, job.data.sitemapId, job.data.rootId))
     ));
+
+    const settlements = await Promise.race([scrapePromise, timeoutPromise]) as any[];
 
     const dbResults: PageScrapeResult[] = [];
     const successJobIds: string[] = [];
@@ -120,38 +122,35 @@ export async function processPageBatch(jobs: PageJob[]): Promise<void> {
       }
     });
 
-    // 3. Final Bulk Insert to Database
+    // 3. Final Bulk Update (Optimistic Locking)
     if (dbResults.length > 0) {
-      try {
-        await db.insert(urls)
-          .values(dbResults)
-          .onConflictDoUpdate({
-            target: urls.url,
-            set: {
-              status: sql`excluded.status`,
-              failureReason: sql`excluded.failure_reason`,
-              s3Url: sql`excluded.s3_url`,
-              mdS3Url: sql`excluded.md_s3_url`,
-              lastScrapedAt: sql`excluded.last_scraped_at`,
-              updatedAt: sql`excluded.updated_at`
-            }
-          });
-      } catch (dbErr) {
-        if (!isNotFoundError(dbErr)) logger.error(`[Page Worker] Bulk insert failed: ${dbErr}`);
-      }
+      const updatePromises = dbResults.map(res => 
+        db.update(urls)
+          .set({
+            status: res.status,
+            failureReason: res.failureReason,
+            s3Url: res.s3Url,
+            mdS3Url: res.mdS3Url,
+            lastScrapedAt: res.lastScrapedAt,
+            updatedAt: new Date()
+          })
+          .where(and(eq(urls.url, res.url), eq(urls.status, 'scraping')))
+      );
+      await Promise.all(updatePromises);
     }
 
-    // 4. Batch Acknowledge to pg-boss
-    const completionPromises = [
+    // 4. Batch Acknowledge
+    await Promise.all([
       ...successJobIds.map(id => boss.complete('page_queue', id)),
       ...failureDetails.map(f => boss.fail('page_queue', f.id, { message: f.error }))
-    ];
+    ]);
 
-    await Promise.all(completionPromises);
-    logger.info(`[Page Worker] Batch ${batchId} done: ${successJobIds.length} OK, ${failureDetails.length} Fails`);
+    logger.info(`[Page Worker] Batch ${batchId} done: ${successJobIds.length} OK`);
 
   } catch (err) {
-    logger.error(`[Page Worker] Fatal error in batch processing: ${err}`);
+    logger.error(`[Page Worker] Batch ${batchId} failed/timed out: ${err}`);
+    // If it's a timeout or fatal error, try to fail all jobs in pg-boss so they can be retried
+    await Promise.all(jobs.map(j => boss.fail('page_queue', j.id, { message: String(err) })));
     throw err;
   }
 }

@@ -54,7 +54,8 @@ async function bulkProcessSitemaps(
         priority: 10,
         retryLimit: config.retryLimit,
         retryDelay: config.retryDelay,
-        retryBackoff: true
+        retryBackoff: true,
+        expireInSeconds: config.pageConcurrency.jobExpireSeconds
       }
     }));
 
@@ -102,7 +103,8 @@ async function bulkProcessUrls(
         priority: 1,
         retryLimit: config.retryLimit,
         retryDelay: config.retryDelay,
-        retryBackoff: true
+        retryBackoff: true,
+        expireInSeconds: config.pageConcurrency.jobExpireSeconds
       }
     }));
 

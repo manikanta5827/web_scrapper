@@ -90,7 +90,8 @@ export async function handleScrape(req: Request): Promise<Response> {
       priority: 10,
       retryLimit: config.retryLimit,
       retryDelay: config.retryDelay,
-      retryBackoff: true
+      retryBackoff: true,
+      expireInSeconds: config.pageConcurrency.jobExpireSeconds
     });
 
     return new Response(JSON.stringify({ message: 'Accepted', id: siteMap.id, rootId: siteMap.rootId }), {

@@ -6,7 +6,6 @@ import { handleDashboard } from './handlers/dashboard';
 import { handleUrls } from './handlers/urls';
 import { handleLogs } from './handlers/logs';
 import { handleGetSitemaps, handleDeleteSitemap } from './handlers/sitemaps';
-import { hydrateConfig } from '../utils/config';
 
 export function startServer() {
   const server = Bun.serve({
@@ -14,18 +13,6 @@ export function startServer() {
     idleTimeout: 30, // Increase timeout to 30 seconds
     async fetch(req) {
       const url = new URL(req.url);
-
-      // --- REFRESH CONFIG (from AWS SSM) ---
-      if (req.method === 'POST' && url.pathname === '/api/config/refresh') {
-        try {
-          await hydrateConfig();
-          return new Response(JSON.stringify({ success: true, message: 'Configuration refreshed from AWS SSM' }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ success: false, error: String(e) }), { status: 500 });
-        }
-      }
 
       // --- REDIRECT / to /dashboard ---
       if (url.pathname === '/') {
