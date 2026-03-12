@@ -10,6 +10,8 @@ dist
 coverage
 *.lcov
 
+setup-ssm.sh
+
 app.log
 # logs
 logs
