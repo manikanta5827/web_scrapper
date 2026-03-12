@@ -10,6 +10,7 @@ import { uploadToS3 } from '../utils/uploadS3';
 import { getISTDate } from '../utils/time';
 import { isNotFoundError } from './utils';
 import type { PageJob, PageScrapeResult } from './types';
+import pLimit from 'p-limit';
 
 /**
  * Logic for processing a single URL
@@ -56,33 +57,35 @@ async function scrapeUrl(url: string, sitemapId: number, rootId: number): Promis
 
 /**
  * Logic for processing a batch of pages
+ * Using p-limit to control concurrency within the batch (max 20)
  */
 export async function processPageBatch(jobs: PageJob[]): Promise<void> {
+  if (jobs.length === 0) return;
+  
   const batchId = jobs[0]?.id?.substring(0, 8) || 'unknown';
   const urlKeys = jobs.map(j => j.data.url);
+  const limit = pLimit(20); // Internal concurrency limit of 20
 
   try {
-    logger.info(`[Page Worker] Processing batch ${batchId} (${jobs.length} jobs)`);
+    logger.info(`[Page Worker] Processing batch ${batchId} (${jobs.length} jobs) with internal limit of 20`);
 
+    // 1. Initial status update (Batch)
     try {
       await db.update(urls)
         .set({ status: 'scraping', updatedAt: getISTDate() })
         .where(sql`${urls.url} IN (${sql.join(urlKeys.map(u => sql`${u}`), sql`, `)})`);
     } catch (dbErr) {
-      if (isNotFoundError(dbErr)) {
-        logger.warn(`[Page Worker] Batch ${batchId} parent records missing, skipping status update.`);
-      } else {
-        throw dbErr;
-      }
+      if (!isNotFoundError(dbErr)) logger.error(`[Page Worker] Status update failed: ${dbErr}`);
     }
 
+    // 2. Parallel Processing with p-limit
     const settlements = await Promise.allSettled(jobs.map(job => 
-      scrapeUrl(job.data.url, job.data.sitemapId, job.data.rootId)
+      limit(() => scrapeUrl(job.data.url, job.data.sitemapId, job.data.rootId))
     ));
 
     const dbResults: PageScrapeResult[] = [];
     const successJobIds: string[] = [];
-    const failureJobIds: { id: string; error: Error }[] = [];
+    const failureDetails: { id: string; error: string }[] = [];
 
     settlements.forEach((res, i) => {
       const job = jobs[i];
@@ -91,22 +94,26 @@ export async function processPageBatch(jobs: PageJob[]): Promise<void> {
       if (res.status === 'fulfilled') {
         const value = res.value as PageScrapeResult;
         dbResults.push(value);
-        if (value.status === 'done') successJobIds.push(job.id);
-        else failureJobIds.push({ id: job.id, error: new Error(value.failureReason || 'Unknown error') });
+        if (value.status === 'done') {
+          successJobIds.push(job.id);
+        } else {
+          failureDetails.push({ id: job.id, error: value.failureReason || 'Unknown failure' });
+        }
       } else {
-        const error = res.reason instanceof Error ? res.reason : new Error(String(res.reason));
+        const error = res.reason instanceof Error ? res.reason.message : String(res.reason);
         dbResults.push({
           url: job.data.url,
           sitemapId: job.data.sitemapId,
           rootId: job.data.rootId,
           status: 'failed',
-          failureReason: error.message,
+          failureReason: error,
           updatedAt: getISTDate()
         });
-        failureJobIds.push({ id: job.id, error });
+        failureDetails.push({ id: job.id, error });
       }
     });
 
+    // 3. Final Bulk Insert to Database
     if (dbResults.length > 0) {
       try {
         await db.insert(urls)
@@ -123,25 +130,21 @@ export async function processPageBatch(jobs: PageJob[]): Promise<void> {
             }
           });
       } catch (dbErr) {
-        if (isNotFoundError(dbErr)) {
-          logger.warn(`[Page Worker] Batch ${batchId} parent sitemap was deleted, cannot sync results.`);
-        } else {
-          throw dbErr;
-        }
+        if (!isNotFoundError(dbErr)) logger.error(`[Page Worker] Bulk insert failed: ${dbErr}`);
       }
     }
 
-    const queuePromises = [
+    // 4. Batch Acknowledge to pg-boss
+    const completionPromises = [
       ...successJobIds.map(id => boss.complete('page_queue', id)),
-      ...failureJobIds.map(f => boss.fail('page_queue', f.id, { message: f.error.message }))
+      ...failureDetails.map(f => boss.fail('page_queue', f.id, { message: f.error }))
     ];
 
-    await Promise.all(queuePromises);
-    logger.info(`[Page Worker] Batch ${batchId} finished: ${successJobIds.length} OK, ${failureJobIds.length} Failed`);
+    await Promise.all(completionPromises);
+    logger.info(`[Page Worker] Batch ${batchId} done: ${successJobIds.length} OK, ${failureDetails.length} Fails`);
 
   } catch (err) {
-    if (isNotFoundError(err)) return;
-    logger.error(`[Page Worker] Fatal error in batch ${batchId}: ${err}`);
+    logger.error(`[Page Worker] Fatal error in batch processing: ${err}`);
     throw err;
   }
 }
