@@ -1,7 +1,7 @@
 import { SSMClient, GetParametersByPathCommand } from '@aws-sdk/client-ssm';
 import { logger } from './logger';
 
-// These are the ONLY allowed process.env variables (Bootstrap only)
+// Bootstrap variables
 const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
 const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || '';
 const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || '';
@@ -17,17 +17,32 @@ const ssmClient = new SSMClient({
   }
 });
 
+/**
+ * Helper to mask sensitive strings for logging
+ * postgres://user:pass@host:5432/db -> postgres://user:****@host:5432/db
+ */
+function maskUrl(url: string | undefined): string {
+  if (!url) return 'UNDEFINED';
+  try {
+    const parsed = new URL(url);
+    if (parsed.password) parsed.password = '****';
+    return parsed.toString();
+  } catch {
+    return url.slice(0, 10) + '...';
+  }
+}
+
 export const config = {
   env: NODE_ENV,
   port: process.env.PORT || '10000',
   
-  // These will be filled EXCLUSIVELY by SSM
-  databaseUrl: '',
-  queueDatabaseUrl: '',
+  // Initialize with process.env if available (from start.sh eval)
+  databaseUrl: (process.env.DATABASE_URL || '').replace(/\\\$/g, '$'),
+  queueDatabaseUrl: process.env.QUEUE_DATABASE_URL || process.env.DATABASE_URL || '',
   
   s3: {
     region: AWS_REGION,
-    bucket: '', 
+    bucket: process.env.AWS_BUCKET_NAME || '', 
     accessKeyId: AWS_ACCESS_KEY_ID,
     secretAccessKey: AWS_SECRET_ACCESS_KEY
   },
@@ -35,7 +50,7 @@ export const config = {
   // Dynamic Settings (Defaults)
   userAgent: 'Mozilla/5.0 (compatible; WebScraper/1.0)',
   timeout: 30000,
-  enableS3Upload: false, 
+  enableS3Upload: NODE_ENV === 'production', 
   sitemapConcurrency: {
     min: 1,
     max: 5,
@@ -68,7 +83,8 @@ export async function hydrateConfig(): Promise<void> {
   const path = `/web-scraper/${config.env}/`;
   
   if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
-    throw new Error(`[Config] FATAL: AWS Credentials missing. Cannot fetch config from ${path}`);
+    logger.warn(`[Config] AWS Credentials missing. Relying on process environment.`);
+    return;
   }
 
   try {
@@ -81,7 +97,8 @@ export async function hydrateConfig(): Promise<void> {
     const response = await ssmClient.send(command);
     
     if (!response.Parameters || response.Parameters.length === 0) {
-      throw new Error(`[Config] FATAL: No parameters found in SSM path "${path}"`);
+      logger.info(`[Config] No parameters found in SSM path "${path}". Check your AWS setup.`);
+      return;
     }
 
     for (const param of response.Parameters) {
@@ -92,7 +109,7 @@ export async function hydrateConfig(): Promise<void> {
         try {
           Object.assign(config, JSON.parse(param.Value));
         } catch (e) {
-          logger.error(`[Config] Failed to parse JSON config: ${e}`);
+          logger.error(`[Config] Failed to parse JSON config from SSM: ${e}`);
         }
         continue;
       }
@@ -103,12 +120,9 @@ export async function hydrateConfig(): Promise<void> {
     }
 
     logger.info(`[Config] Successfully hydrated from AWS SSM path "${path}"`);
+    logger.info(`[Config] Active Database URL: ${maskUrl(config.databaseUrl)}`);
     
-    if (!config.databaseUrl) {
-      throw new Error(`[Config] FATAL: DATABASE_URL not found in SSM path "${path}"`);
-    }
   } catch (error) {
-    logger.error(`[Config] Hydration failed: ${error instanceof Error ? error.message : 'Unknown'}`);
-    process.exit(1); // Stop app if config cannot be loaded
+    logger.warn(`[Config] Hydration failed: ${error instanceof Error ? error.message : 'Unknown'}. Using existing environment.`);
   }
 }

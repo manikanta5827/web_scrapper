@@ -9,11 +9,11 @@ async function main(): Promise<void> {
   logger.info('--- STARTING COMBINED SERVICE (API + WORKERS) ---');
 
   try {
-    // 1. Verify DB Connection
-    await checkConnection();
-
-    // 2. Load Dynamic Configs from DB
+    // 1. Load Dynamic Configs from AWS SSM FIRST
     await hydrateConfig();
+
+    // 2. Verify DB Connection
+    await checkConnection();
 
     // 3. Initialize Queue (once for the whole process)
     await initQueue();
