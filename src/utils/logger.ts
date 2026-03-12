@@ -1,14 +1,16 @@
 import winston from 'winston';
-import { config } from './config';
 
 const { combine, timestamp, printf, colorize } = winston.format;
+
+// Environment check independent of config.ts to avoid circular dependency
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const logFormat = printf(({ level, message, timestamp }) => {
   return `${timestamp} [${level}]: ${message}`;
 });
 
 export const logger = winston.createLogger({
-  level: config.env === 'development' ? 'debug' : 'info',
+  level: NODE_ENV === 'development' ? 'debug' : 'info',
   format: combine(
     timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     logFormat
@@ -22,7 +24,7 @@ export const logger = winston.createLogger({
       ),
     }),
     new winston.transports.File({ 
-      filename: config.logFile,
+      filename: 'logs/app.log',
       level: 'debug',
       maxsize: 5242880, // 5MB
       maxFiles: 3,
