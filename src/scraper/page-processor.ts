@@ -31,10 +31,18 @@ async function scrapeUrl(url: string, sitemapId: number, rootId: number): Promis
     const contentType = res.headers['content-type'];
     if (contentType?.includes('text/html')) {
       const cleanContent = extract(res.data);
-      const [s3Url, mdS3Url] = await Promise.all([
-        uploadToS3(url, res.data, 'html'),
-        uploadToS3(url, cleanContent, 'md')
-      ]);
+      
+      let s3Url: string | undefined;
+      let mdS3Url: string | undefined;
+
+      if (config.enableS3Upload) {
+        [s3Url, mdS3Url] = await Promise.all([
+          uploadToS3(url, res.data, 'html'),
+          uploadToS3(url, cleanContent, 'md')
+        ]);
+      } else {
+        logger.debug(`[Scraper] S3 Upload skipped for ${url} (enableS3Upload=false)`);
+      }
 
       return {
         url,

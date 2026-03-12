@@ -1,70 +1,120 @@
-if (!process.env.DATABASE_URL) {
-  console.error('[FATAL] DATABASE_URL is missing');
-  process.exit(1);
-}
+import { SSMClient, GetParametersByPathCommand } from '@aws-sdk/client-ssm';
+import { logger } from './logger';
 
+// Bootstrap variables
+const AWS_REGION = process.env.AWS_REGION || 'ap-south-1';
+const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || '';
+const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || '';
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+/**
+ * AWS SSM Client
+ */
+const ssmClient = new SSMClient({
+  region: AWS_REGION,
+  credentials: {
+    accessKeyId: AWS_ACCESS_KEY_ID,
+    secretAccessKey: AWS_SECRET_ACCESS_KEY
+  }
+});
+
+/**
+ * Initial Config (Populated from local .env)
+ */
 export const config = {
-  // Database connection string
-  databaseUrl: (process.env.DATABASE_URL as string).replace(/\\\$/g, '$'),
+  env: NODE_ENV,
+  port: process.env.PORT || '10000',
+  
+  // Use local .env values as the primary source/fallback
+  databaseUrl: (process.env.DATABASE_URL || '').replace(/\\\$/g, '$'),
+  queueDatabaseUrl: process.env.QUEUE_DATABASE_URL || process.env.DATABASE_URL || '',
+  
+  s3: {
+    region: AWS_REGION,
+    bucket: process.env.AWS_BUCKET_NAME || '',
+    accessKeyId: AWS_ACCESS_KEY_ID,
+    secretAccessKey: AWS_SECRET_ACCESS_KEY
+  },
 
-  // Dedicated Queue Database (Project B)
-  queueDatabaseUrl: (process.env.QUEUE_DATABASE_URL || process.env.DATABASE_URL) as string,
-
-  // Identity string for the scraper
+  // Dynamic Settings (Defaults)
   userAgent: 'Mozilla/5.0 (compatible; WebScraper/1.0)',
-
-  // Timeout for HTTP requests (30 seconds)
   timeout: 30000,
-
-  // Sitemap worker scaling parameters
+  enableS3Upload: process.env.NODE_ENV !== 'development', // Default: off in dev
   sitemapConcurrency: {
     min: 1,
     max: 5,
     scaleUpThreshold: 10,
-    scalerCheckIntervalMs: 30000, // How often to scale up/down
+    scalerCheckIntervalMs: 30000,
     batchSize: 1,
-    workerFetchIntervalSeconds: 15, // How often to check for new jobs when idle
+    workerFetchIntervalSeconds: 15,
   },
-  
-  // Page worker scaling parameters (Optimized for Batch-Buffered)
   pageConcurrency: {
     min: 1,
     max: 15,
     scaleUpThreshold: 100,
-    scalerCheckIntervalMs: 20000,   // How often to scale up/down
+    scalerCheckIntervalMs: 20000,
     batchSize: 100,
-    workerFetchIntervalSeconds: 10, // How often to check for new jobs when idle
+    workerFetchIntervalSeconds: 10,
   },
-
-  // Max retry attempts for failed jobs
   retryLimit: 3,
-
-  // Delay between retries in seconds
   retryDelay: 30,
-
-  // Max characters to extract per page
   maxContentLength: 100000,
-
-  // Number of items to process in a single DB batch
   batchSize: 500,
 
-  // Runtime environment (development/production)
-  env: process.env.NODE_ENV || 'development',
-
-  // Log output filename
-  logFile: 'logs/app.log',
-  
-  // S3 storage configuration
-  s3: {
-    region: process.env.AWS_REGION || 'ap-south-1',
-    bucket: process.env.AWS_BUCKET_NAME || 'web-scraper-raw-html',
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
-  },
-
-  // Database connection pool settings (Optimized for Single-Process 512MB RAM)
-  dbMaxConnections: 10, 
-  bossMaxConnections: 15, 
+  dbMaxConnections: 10,
+  bossMaxConnections: 15,
   dbConnectionTimeout: 60000,
   dbIdleTimeout: 30000,
-} as const;
+  logFile: 'logs/app.log',
+};
+
+/**
+ * Hydrate from AWS SSM (Overlays on top of local .env)
+ */
+export async function hydrateConfig(): Promise<void> {
+  // Skip SSM if credentials are missing (e.g. local dev without AWS)
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY) {
+    logger.info('[Config] AWS Credentials missing. Skipping SSM hydration, using local .env.');
+    return;
+  }
+
+  const path = `/web-scraper/${config.env}/`;
+  
+  try {
+    const command = new GetParametersByPathCommand({
+      Path: path,
+      WithDecryption: true,
+      Recursive: true
+    });
+
+    const response = await ssmClient.send(command);
+    
+    if (!response.Parameters || response.Parameters.length === 0) {
+      logger.info(`[Config] No parameters found in SSM path "${path}". Staying with local .env.`);
+      return;
+    }
+
+    for (const param of response.Parameters) {
+      if (!param.Name || !param.Value) continue;
+      const key = param.Name.replace(path, '');
+      
+      if (key === 'config') {
+        try {
+          Object.assign(config, JSON.parse(param.Value));
+        } catch (e) {
+          logger.error(`[Config] Failed to parse JSON config from SSM: ${e}`);
+        }
+        continue;
+      }
+
+      // Map critical vars
+      if (key === 'DATABASE_URL') config.databaseUrl = param.Value.replace(/\\\$/g, '$');
+      if (key === 'QUEUE_DATABASE_URL') config.queueDatabaseUrl = param.Value;
+      if (key === 'AWS_BUCKET_NAME') config.s3.bucket = param.Value;
+    }
+
+    logger.info(`[Config] Successfully overlaid SSM settings from "${path}"`);
+  } catch (error) {
+    logger.warn(`[Config] SSM hydration failed: ${error instanceof Error ? error.message : 'Unknown'}. Using local .env.`);
+  }
+}

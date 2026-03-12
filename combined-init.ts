@@ -2,6 +2,7 @@ import { startServer } from './src/api/server';
 import { startSitemapWorker, startPageWorker } from './src/scraper/worker';
 import { initQueue, stopQueue } from './src/queue/boss';
 import { checkConnection, closeDb } from './src/db/client';
+import { hydrateConfig } from './src/utils/config';
 import { logger } from './src/utils/logger';
 
 async function main(): Promise<void> {
@@ -11,7 +12,10 @@ async function main(): Promise<void> {
     // 1. Verify DB Connection
     await checkConnection();
 
-    // 2. Initialize Queue (once for the whole process)
+    // 2. Load Dynamic Configs from DB
+    await hydrateConfig();
+
+    // 3. Initialize Queue (once for the whole process)
     await initQueue();
 
     // 3. Start Workers

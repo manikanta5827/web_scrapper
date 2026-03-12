@@ -8,14 +8,11 @@ export async function handleDashboard(req: Request, url: URL): Promise<Response>
     const fileName = isDetailView ? 'src/api/dashboard.html' : 'src/api/index.html';
     const file = Bun.file(fileName);
     let html = await file.text();
-    
+
     // Inject dynamic values
     html = html.replaceAll('{{rootId}}', rootId || '');
-    html = html.replaceAll('{{supabaseUrl}}', process.env.SUPABASE_URL || '');
-    html = html.replaceAll('{{supabaseAnonKey}}', process.env.SUPABASE_ANON_KEY || '');
-    
-    return new Response(html, { 
-      headers: { 'Content-Type': 'text/html' } 
+
+    return new Response(html, {      headers: { 'Content-Type': 'text/html' } 
     });
   } catch (e) {
     return new Response(`Template not found: ${isDetailView ? 'detail' : 'index'}`, { status: 404 });

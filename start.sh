@@ -1,25 +1,23 @@
 #!/bin/bash
-# Exit on any error
 set -e
 
-echo "Starting Optimized Multi-Service App..."
+echo "--- STARTING DOCKER CONTAINER ---"
 
-# 1. Validate DATABASE_URL isn't a placeholder
-if [[ "$DATABASE_URL" == *"replace-with-your-supabase-url"* ]]; then
-  echo "ERROR: DATABASE_URL is still a placeholder! Please update it in the Render Env Var Group."
-  exit 1
+# 1. Fetch SSM Parameters into the current shell
+# This provides DATABASE_URL and other secrets for the commands below
+if [ -f "fetch-ssm-vars.ts" ]; then
+  echo "[1/3] Fetching environment secrets from AWS SSM..."
+  eval $(bun run fetch-ssm-vars.ts)
+  echo "      SSM secrets loaded."
+else
+  echo "[SKIP] fetch-ssm-vars.ts not found. Using current env."
 fi
 
-# 1. Validate QUEUE_DATABASE_URL isn't a placeholder
-if [[ "$QUEUE_DATABASE_URL" == *"replace-with-your-supabase-queue-url"* ]]; then
-  echo "ERROR: QUEUE_DATABASE_URL is still a placeholder! Please update it in the Render Env Var Group."
-  exit 1
-fi
+# 2. Sync Database Schema
+# drizzle-kit push needs DATABASE_URL to be set in the shell
+echo "[2/3] Syncing database schema with Drizzle Kit..."
+bunx drizzle-kit push || echo "Migration check failed or not needed."
 
-# 2. Run database sync
-echo "Running database sync..."
-bun run db:push
-
-# 3. Start the combined application in the foreground
-echo "Starting Combined API and Workers..."
-bun run app.js
+# 3. Start the Unified Service (API + Workers)
+echo "[3/3] Launching combined application..."
+exec bun run app.js

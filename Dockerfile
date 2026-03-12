@@ -32,7 +32,7 @@ COPY package.json drizzle.config.ts ./
 COPY drizzle ./drizzle
 COPY src/db/schema.ts ./src/db/schema.ts
 COPY src/api/*.html ./src/api/
-COPY start.sh ./
+COPY fetch-ssm-vars.ts start.sh ./
 
 # Set environment
 ENV NODE_ENV=production

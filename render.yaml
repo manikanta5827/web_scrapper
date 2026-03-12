@@ -1,8 +1,8 @@
 # Render Blueprint for Web Scraper (Free Plan Compatible)
 services:
-  # The All-in-One Web Service (Runs API + Both Workers)
+  # The All-in-One Service (Runs API + Workers in a single process)
   - type: web
-    name: web-scraper-all-in-one
+    name: web-scraper-optimized
     runtime: docker
     plan: free
     envVars:
@@ -10,25 +10,15 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - fromGroup: web-scraper-secrets
+      - fromGroup: aws-ssm-credentials
 
-# Environment Group for secrets
+# Essential Credentials to allow the app to fetch everything else from AWS SSM
 envVarGroups:
-  - name: web-scraper-secrets
+  - name: aws-ssm-credentials
     envVars:
-      - key: DATABASE_URL
-        value: "replace-with-your-supabase-url"
-      - key: QUEUE_DATABASE_URL
-        value: "replace-with-your-supabase-queue-url"
-      - key: SUPABASE_URL
-        value: "supabase-url-placeholder"
-      - key: SUPABASE_ANON_KEY
-        value: "supabase-anon-key-placeholder"
-      - key: AWS_ACCESS_KEY_ID
-        value: "replace-with-your-key"
-      - key: AWS_SECRET_ACCESS_KEY
-        value: "replace-with-your-secret"
       - key: AWS_REGION
         value: "ap-south-1"
-      - key: AWS_BUCKET_NAME
-        value: "web-scraper-raw-html"
+      - key: AWS_ACCESS_KEY_ID
+        value: "REPLACE_WITH_YOUR_KEY"
+      - key: AWS_SECRET_ACCESS_KEY
+        value: "REPLACE_WITH_YOUR_SECRET"
