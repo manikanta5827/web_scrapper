@@ -7,7 +7,6 @@ import { config } from '../utils/config';
 import { extract } from './extractor';
 import { logger } from '../utils/logger';
 import { uploadToS3 } from '../utils/uploadS3';
-import { getISTDate } from '../utils/time';
 import { isNotFoundError } from './utils';
 import type { PageJob, PageScrapeResult } from './types';
 import pLimit from 'p-limit';
@@ -25,7 +24,7 @@ async function scrapeUrl(url: string, sitemapId: number, rootId: number): Promis
 
     if (res.status === 429) throw new Error('Rate limited (429)');
     if (res.status === 403 || res.status === 401) {
-      return { url, sitemapId, rootId, status: 'failed', failureReason: `Auth error: ${res.status}`, updatedAt: getISTDate() };
+      return { url, sitemapId, rootId, status: 'failed', failureReason: `Auth error: ${res.status}`, updatedAt: new Date() };
     }
 
     const contentType = res.headers['content-type'];
@@ -51,15 +50,15 @@ async function scrapeUrl(url: string, sitemapId: number, rootId: number): Promis
         s3Url,
         mdS3Url,
         status: 'done',
-        lastScrapedAt: getISTDate(),
-        updatedAt: getISTDate()
+        lastScrapedAt: new Date(),
+        updatedAt: new Date()
       };
     } else {
-      return { url, sitemapId, rootId, status: 'failed', failureReason: `Invalid content type: ${contentType}`, updatedAt: getISTDate() };
+      return { url, sitemapId, rootId, status: 'failed', failureReason: `Invalid content type: ${contentType}`, updatedAt: new Date() };
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
-    return { url, sitemapId, rootId, status: 'failed', failureReason: msg, updatedAt: getISTDate() };
+    return { url, sitemapId, rootId, status: 'failed', failureReason: msg, updatedAt: new Date() };
   }
 }
 
@@ -80,7 +79,7 @@ export async function processPageBatch(jobs: PageJob[]): Promise<void> {
     // 1. Initial status update (Batch)
     try {
       await db.update(urls)
-        .set({ status: 'scraping', updatedAt: getISTDate() })
+        .set({ status: 'scraping', updatedAt: new Date() })
         .where(sql`${urls.url} IN (${sql.join(urlKeys.map(u => sql`${u}`), sql`, `)})`);
     } catch (dbErr) {
       if (!isNotFoundError(dbErr)) logger.error(`[Page Worker] Status update failed: ${dbErr}`);
@@ -115,7 +114,7 @@ export async function processPageBatch(jobs: PageJob[]): Promise<void> {
           rootId: job.data.rootId,
           status: 'failed',
           failureReason: error,
-          updatedAt: getISTDate()
+          updatedAt: new Date()
         });
         failureDetails.push({ id: job.id, error });
       }

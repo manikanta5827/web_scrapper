@@ -137,7 +137,7 @@
                   ${s.status === 'failed' && failureReason ? `<span class="error-text">Reason: ${failureReason}</span>` : ''}
                 </div>
               </td>
-              <td class="timestamp">${new Date(createdAt).toLocaleString()}</td>
+              <td class="timestamp">${new Date(createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
               <td><span class="badge" style="background: #ebf1ff; color: #2563eb;">${totalUrls.toLocaleString()}</span></td>
               <td><span class="badge status-${s.status}">${s.status}</span></td>
               <td style="display: flex; gap: 8px;">

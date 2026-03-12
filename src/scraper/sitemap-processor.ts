@@ -6,8 +6,7 @@ import { boss } from '../queue/boss';
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import { parseStringPromise } from 'xml2js';
-import { getISTDate } from '../utils/time';
-import { parseDate, isNotFoundError } from './utils';
+import { isNotFoundError } from './utils';
 import type { SitemapJobData } from './types';
 
 /**
@@ -122,7 +121,7 @@ export async function processSitemap(data: SitemapJobData): Promise<void> {
     logger.warn(`Max depth reached for: ${sitemapUrl}`);
     try {
       await db.update(sitemaps)
-        .set({ status: 'failed', failureReason: 'Max depth (5) reached', updatedAt: getISTDate() })
+        .set({ status: 'failed', failureReason: 'Max depth (5) reached', updatedAt: new Date() })
         .where(eq(sitemaps.id, sitemapId));
     } catch (e) {
       if (isNotFoundError(e)) return;
@@ -177,7 +176,7 @@ export async function processSitemap(data: SitemapJobData): Promise<void> {
         try {
           const sitemapData = entries.map((entry: any) => ({
             loc: entry.loc,
-            lastMod: parseDate(entry.lastmod)
+            lastMod: null
           }));
           await bulkProcessSitemaps(sitemapData, sitemapId, rootId, depth);
         } catch (dbErr) {
@@ -200,7 +199,7 @@ export async function processSitemap(data: SitemapJobData): Promise<void> {
         for (const entry of entries) {
           const baseUrl = entry.loc.split('?')[0] ?? '';
           const isSitemap = baseUrl.toLowerCase().endsWith('.xml') || baseUrl.toLowerCase().endsWith('.xml.gz');
-          const entryData = { loc: entry.loc, lastMod: parseDate(entry.lastmod) };
+          const entryData = { loc: entry.loc, lastMod: null };
           
           if (isSitemap) sitemapEntries.push(entryData);
           else urlEntries.push(entryData);
@@ -221,7 +220,7 @@ export async function processSitemap(data: SitemapJobData): Promise<void> {
 
     try {
       await db.update(sitemaps)
-        .set({ status: 'active', totalUrlsFound: totalItems, updatedAt: getISTDate() })
+        .set({ status: 'active', totalUrlsFound: totalItems, updatedAt: new Date() })
         .where(eq(sitemaps.id, sitemapId));
     } catch (dbErr) {
       if (isNotFoundError(dbErr)) return;

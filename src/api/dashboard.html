@@ -168,7 +168,7 @@
                 ${status === 'failed' && failureReason ? `<br><span style="color:#991b1b; font-size:12px; font-style:italic;">Reason: ${failureReason}</span>` : ''}
               </td>
               <td><span class="badge status-${status}">${status}</span></td>
-              <td style="color:#64748b; font-size:13px;">${new Date(updatedAt).toLocaleString()}</td>
+              <td style="color:#64748b; font-size:13px;">${new Date(updatedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
               <td style="display: flex; gap: 8px;">
                 ${s3Url ? `<a href="${s3Url}" target="_blank" class="scrape-link">HTML</a>` : '-'}
                 ${mdS3Url ? `<a href="${mdS3Url}" target="_blank" class="scrape-link">MD</a>` : ''}
