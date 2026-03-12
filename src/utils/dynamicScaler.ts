@@ -3,13 +3,13 @@ import { logger } from './logger';
 
 export interface ScalerOptions {
   queueName: string;
-  serviceName: string; // The service name
+  serviceName: string; 
   min: number;
   max: number;
   scaleUpThreshold: number;
-  pollInterval?: number;
+  scalerCheckIntervalMs?: number;
   batchSize?: number;
-  pollingIntervalSeconds?: number; // Internal pg-boss check interval in seconds
+  workerFetchIntervalSeconds?: number; 
 }
 
 /**
@@ -29,11 +29,15 @@ export class DynamicScaler {
    * Initialize workers and start monitoring
    */
   async start() {
-    const { min, batchSize = 1, queueName, pollingIntervalSeconds = 5 } = this.options;
+    const { min, batchSize = 1, queueName, workerFetchIntervalSeconds = 10 } = this.options;
     
     if (min > 0) {
       const startPromises = Array.from({ length: min }).map(() => 
-        boss.work(queueName, { localConcurrency: 1, batchSize, pollingIntervalSeconds }, this.handler)
+        boss.work(queueName, { 
+          localConcurrency: 1, 
+          batchSize, 
+          pollingIntervalSeconds: workerFetchIntervalSeconds 
+        }, this.handler)
       );
       
       const ids = await Promise.all(startPromises);
@@ -41,9 +45,9 @@ export class DynamicScaler {
       this.currentConcurrency = this.workerIds.length;
     }
 
-    logger.info(`[Scaler] Started ${this.options.serviceName} with ${this.currentConcurrency} workers (polling: ${pollingIntervalSeconds}s)`);
+    logger.info(`[Scaler] Started ${this.options.serviceName} with ${this.currentConcurrency} workers (fetch interval: ${workerFetchIntervalSeconds}s)`);
 
-    this.interval = setInterval(() => this.checkAndScale(), this.options.pollInterval || 30000);
+    this.interval = setInterval(() => this.checkAndScale(), this.options.scalerCheckIntervalMs || 30000);
   }
 
   /**
@@ -67,7 +71,7 @@ export class DynamicScaler {
    * Adjust worker count based on queue pressure
    */
   private async checkAndScale() {
-    const { queueName, max, min, scaleUpThreshold, batchSize = 1, pollingIntervalSeconds = 5 } = this.options;
+    const { queueName, max, min, scaleUpThreshold, batchSize = 1, workerFetchIntervalSeconds = 10 } = this.options;
     
     try {
       const stats = await boss.getQueueStats(queueName);
@@ -81,7 +85,11 @@ export class DynamicScaler {
         logger.debug(`[Scaler] ${queueName} Scaling UP: ${this.currentConcurrency} -> ${targetConcurrency}`);
         
         const addPromises = Array.from({ length: toAdd }).map(() => 
-          boss.work(queueName, { localConcurrency: 1, batchSize, pollingIntervalSeconds }, this.handler)
+          boss.work(queueName, { 
+            localConcurrency: 1, 
+            batchSize, 
+            pollingIntervalSeconds: workerFetchIntervalSeconds 
+          }, this.handler)
         );
         
         const newIds = await Promise.all(addPromises);

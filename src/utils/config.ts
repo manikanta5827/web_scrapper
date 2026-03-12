@@ -19,21 +19,21 @@ export const config = {
   // Sitemap worker scaling parameters
   sitemapConcurrency: {
     min: 1,
-    max: 20,
-    scaleUpThreshold: 5,
-    pollInterval: 10000,
-    batchSize: 1, // Sitemaps are heavy, process 1 by 1
-    pollingIntervalSeconds: 5,
+    max: 5,
+    scaleUpThreshold: 10,
+    scalerCheckIntervalMs: 30000, // How often to scale up/down
+    batchSize: 1,
+    workerFetchIntervalSeconds: 15, // How often to check for new jobs when idle
   },
   
-  // Page worker scaling parameters
+  // Page worker scaling parameters (Optimized for Batch-Buffered)
   pageConcurrency: {
     min: 1,
-    max: 25, // Lower worker count = less CPU overhead
-    scaleUpThreshold: 20,
-    pollInterval: 5000,
-    batchSize: 100, // Higher batch size = more work per DB call
-    pollingIntervalSeconds: 2, // Faster polling since we have fewer workers
+    max: 15,
+    scaleUpThreshold: 100,
+    scalerCheckIntervalMs: 20000,   // How often to scale up/down
+    batchSize: 100,
+    workerFetchIntervalSeconds: 10, // How often to check for new jobs when idle
   },
 
   // Max retry attempts for failed jobs
@@ -62,9 +62,9 @@ export const config = {
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
   },
 
-  // Database connection pool settings (Optimized for Supabase)
-  dbMaxConnections: 30, // Increased to support large batch saves
-  bossMaxConnections: 50, // More connections than workers to ensure heartbeat safety
+  // Database connection pool settings (Optimized for Single-Process 512MB RAM)
+  dbMaxConnections: 10, 
+  bossMaxConnections: 15, 
   dbConnectionTimeout: 60000,
   dbIdleTimeout: 30000,
 } as const;
